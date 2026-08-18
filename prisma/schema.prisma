@@ -65,12 +65,17 @@ model User {
 // prisma/migrations/*_rls_core/migration.sql alongside the RLS policies.
 // See docs/architecture.md §3 and §5.3b.
 model GymMembership {
-  id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String         @map("user_id") @db.Uuid
-  gymId     String?        @map("gym_id") @db.Uuid
-  role      MembershipRole
-  createdAt DateTime       @default(now()) @map("created_at")
-  updatedAt DateTime       @default(now()) @updatedAt @map("updated_at")
+  id         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String         @map("user_id") @db.Uuid
+  gymId      String?        @map("gym_id") @db.Uuid
+  role       MembershipRole
+  // Phase 2: set to disable a Gym Staff login without deleting the row
+  // (deactivation != deletion, matching the gyms.status pattern). Checked
+  // centrally in lib/server/auth.ts's getSessionContext(). Not used for
+  // PLATFORM_ADMIN/GYM_ADMIN rows in Phase 2's UI.
+  disabledAt DateTime?      @map("disabled_at")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @default(now()) @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   gym  Gym? @relation(fields: [gymId], references: [id], onDelete: Restrict)

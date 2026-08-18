@@ -48,16 +48,57 @@ describe("application-layer auth/tenant context", () => {
   it("resolveIdentity resolves the correct gymId/role for a provisioned user", async () => {
     const identity = await resolveIdentity(adminA.id);
     expect(identity).toEqual({
+      status: "ok",
       userId: adminA.id,
       gymId: gymA.id,
       role: "GYM_ADMIN",
     });
   });
 
-  it("resolveIdentity returns null for a user with no membership row", async () => {
+  it("resolveIdentity reports no_membership for a user with no membership row", async () => {
     const orphan = await seedUser(owner, "orphan@test.local");
     const identity = await resolveIdentity(orphan.id);
-    expect(identity).toBeNull();
+    expect(identity).toEqual({ status: "no_membership" });
+  });
+
+  it("resolveIdentity reports account_disabled for a disabled membership", async () => {
+    const staff = await seedUser(owner, "disabled-staff@test.local");
+    await seedMembership(owner, {
+      userId: staff.id,
+      gymId: gymA.id,
+      role: "GYM_STAFF",
+      disabledAt: new Date(),
+    });
+    const identity = await resolveIdentity(staff.id);
+    expect(identity).toEqual({ status: "account_disabled" });
+  });
+
+  it("resolveIdentity reports gym_suspended for a membership in a suspended gym", async () => {
+    const suspendedGym = await seedGym(owner, "Suspended Gym", "SUSPENDED");
+    const admin = await seedUser(owner, "admin-suspended@test.local");
+    await seedMembership(owner, {
+      userId: admin.id,
+      gymId: suspendedGym.id,
+      role: "GYM_ADMIN",
+    });
+    const identity = await resolveIdentity(admin.id);
+    expect(identity).toEqual({ status: "gym_suspended" });
+  });
+
+  it("resolveIdentity ignores gym status for a Platform Admin (no gymId to check)", async () => {
+    const platformAdmin = await seedUser(owner, "pa-ok@test.local");
+    await seedMembership(owner, {
+      userId: platformAdmin.id,
+      gymId: null,
+      role: "PLATFORM_ADMIN",
+    });
+    const identity = await resolveIdentity(platformAdmin.id);
+    expect(identity).toEqual({
+      status: "ok",
+      userId: platformAdmin.id,
+      gymId: null,
+      role: "PLATFORM_ADMIN",
+    });
   });
 
   it("withTenant-scoped Prisma queries only see the caller's own gym", async () => {

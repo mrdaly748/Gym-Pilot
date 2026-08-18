@@ -6,6 +6,10 @@ const ERROR_MESSAGES: Record<string, string> = {
   no_membership:
     "This account has no gym access yet. Contact your administrator.",
   session_expired: "Your session expired. Please log in again.",
+  gym_suspended:
+    "This gym's account is currently inactive. Contact your gym administrator.",
+  account_disabled:
+    "This account has been disabled. Contact your gym administrator.",
 };
 
 export default async function LoginPage({

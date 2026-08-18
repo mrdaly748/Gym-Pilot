@@ -27,3 +27,12 @@ export class NotFoundError extends Error {
     this.name = "NotFoundError";
   }
 }
+
+/** Bad input from a form/action — distinct from AuthorizationError (a role
+ * problem) and NotFoundError (a missing record). */
+export class ValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ValidationError";
+  }
+}

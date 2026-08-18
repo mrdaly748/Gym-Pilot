@@ -34,9 +34,16 @@ export const getSessionContext = cache(async (): Promise<SessionContext> => {
   }
 
   const identity = await resolveIdentity(user.id);
-  if (!identity) {
+  if (identity.status !== "ok") {
+    // Every non-"ok" outcome (no membership, disabled account, suspended
+    // gym) is a hard authentication failure here — this is the single
+    // choke point every layout guard goes through, so it blocks both a
+    // fresh login attempt and an already-open session hitting a gym that
+    // was suspended (or a staff account that was disabled) after the
+    // session started. See lib/server/services/identity.ts and
+    // docs/decisions.md.
     throw new AuthenticationError(
-      "Authenticated, but no gym membership was found for this user.",
+      `Authenticated, but session is blocked: ${identity.status}.`,
     );
   }
 

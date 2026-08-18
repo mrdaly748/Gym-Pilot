@@ -146,6 +146,18 @@ export async function startTestDatabase(): Promise<void> {
         "utf8",
       ),
     );
+
+    // Any migration after these two foundational ones (e.g. Phase 2+
+    // additive schema changes) is applied last, in chronological order.
+    // migrationDirs is already sorted, so filtering preserves order.
+    const laterMigrations = migrationDirs.filter(
+      (name) => name !== schemaMigration && name !== rlsMigration,
+    );
+    for (const dir of laterMigrations) {
+      await owner.query(
+        readFileSync(path.join(MIGRATIONS_DIR, dir, "migration.sql"), "utf8"),
+      );
+    }
   } finally {
     await owner.end();
   }
@@ -198,11 +210,16 @@ export async function resetTestData(owner: Pool): Promise<void> {
   );
 }
 
+export type GymStatus = "ACTIVE" | "SUSPENDED";
 export type SeededGym = { id: string; name: string };
-export async function seedGym(owner: Pool, name: string): Promise<SeededGym> {
+export async function seedGym(
+  owner: Pool,
+  name: string,
+  status: GymStatus = "ACTIVE",
+): Promise<SeededGym> {
   const result = await owner.query<SeededGym>(
-    "INSERT INTO gyms (name) VALUES ($1) RETURNING id, name",
-    [name],
+    "INSERT INTO gyms (name, status) VALUES ($1, $2) RETURNING id, name",
+    [name, status],
   );
   return result.rows[0];
 }
@@ -223,11 +240,16 @@ export type MembershipRole = "PLATFORM_ADMIN" | "GYM_ADMIN" | "GYM_STAFF";
 export type SeededMembership = { id: string };
 export async function seedMembership(
   owner: Pool,
-  args: { userId: string; gymId: string | null; role: MembershipRole },
+  args: {
+    userId: string;
+    gymId: string | null;
+    role: MembershipRole;
+    disabledAt?: Date;
+  },
 ): Promise<SeededMembership> {
   const result = await owner.query<SeededMembership>(
-    'INSERT INTO gym_memberships (user_id, gym_id, role) VALUES ($1, $2, $3) RETURNING id',
-    [args.userId, args.gymId, args.role],
+    "INSERT INTO gym_memberships (user_id, gym_id, role, disabled_at) VALUES ($1, $2, $3, $4) RETURNING id",
+    [args.userId, args.gymId, args.role, args.disabledAt ?? null],
   );
   return result.rows[0];
 }

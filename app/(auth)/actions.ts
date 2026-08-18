@@ -1,19 +1,12 @@
 "use server";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/server/supabase";
 import { resolveIdentity } from "@/lib/server/services/identity";
+import { currentOrigin } from "@/lib/server/origin";
 
 function destinationForIdentity(gymId: string | null): string {
   return gymId ? `/gym/${gymId}` : "/platform";
-}
-
-async function currentOrigin(): Promise<string> {
-  const headersList = await headers();
-  const host = headersList.get("host") ?? "localhost:3000";
-  const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
-  return `${protocol}://${host}`;
 }
 
 export async function loginAction(formData: FormData): Promise<void> {
@@ -31,12 +24,14 @@ export async function loginAction(formData: FormData): Promise<void> {
   }
 
   const identity = await resolveIdentity(data.user.id);
-  if (!identity) {
-    // Authenticated with Supabase but has no gym_memberships row — not a
-    // usable account. Sign out rather than leaving a half-authenticated
-    // session sitting around.
+  if (identity.status !== "ok") {
+    // Authenticated with Supabase, but the session is blocked (no
+    // membership, a disabled staff login, or a suspended gym — spec §19
+    // requires a clear, non-technical message per case, not a generic
+    // error). Sign out rather than leaving a half-authenticated session
+    // sitting around.
     await supabase.auth.signOut();
-    redirect("/login?error=no_membership");
+    redirect(`/login?error=${identity.status}`);
   }
 
   redirect(destinationForIdentity(identity.gymId));
@@ -81,5 +76,9 @@ export async function resetPasswordAction(formData: FormData): Promise<void> {
   }
 
   const identity = await resolveIdentity(user.id);
-  redirect(destinationForIdentity(identity?.gymId ?? null));
+  if (identity.status !== "ok") {
+    await supabase.auth.signOut();
+    redirect(`/login?error=${identity.status}`);
+  }
+  redirect(destinationForIdentity(identity.gymId));
 }
