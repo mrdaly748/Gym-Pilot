@@ -127,7 +127,7 @@ The spec is explicit that isolation must be enforced "at the appropriate databas
 
 If the application-layer filter were ever omitted by a future code change (a bug, a rushed feature), RLS still blocks the cross-tenant rows at the database — the two layers fail independently. This guarantee only holds if the layer described in §5.3a (dedicated role, `FORCE ROW LEVEL SECURITY`) is actually in place — see that section for why table ownership and role privileges can otherwise make RLS silently inert.
 
-**Platform Admin queries** are the one exception: they target tables with no `gym_id` (`gyms` itself, plus the global slice of `gym_memberships`) and are gated purely by `role = platform_admin`, not by gym-scoped RLS, because platform-level operations are inherently cross-gym by nature (listing all gyms).
+**Platform Admin queries** are the one exception: they target tables with no `gym_id` (`gyms` itself, plus the global slice of `gym_memberships`) and are gated purely by `role = PLATFORM_ADMIN`, not by gym-scoped RLS, because platform-level operations are inherently cross-gym by nature (listing all gyms).
 
 ### 5.3 The RLS-transaction helper (concrete pattern)
 

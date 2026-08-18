@@ -8,9 +8,9 @@ This plan divides the MVP into 11 sequential phases (0–10). Each phase is a me
 
 Testing approach referenced throughout (defined once, applied per phase):
 - **Unit** (Vitest): business-rule/service-layer logic, no database.
-- **Integration** (Vitest + local Postgres via Supabase CLI): service layer against a real database with RLS enabled.
-- **Isolation** (`tests/isolation/`): dedicated, required cross-tenant-leakage suite — introduced in Phase 1, re-run and extended every phase that adds a new entity.
-- **E2E** (Playwright): critical end-to-end user flows.
+- **Integration** (Vitest + an ephemeral Postgres instance — a `postgres:16` CI service container, or Prisma's local dev Postgres for a developer running the suite locally): service layer against a real database with migrations and RLS applied fresh each run. This is deliberately **not** the hosted Supabase dev project (architecture §9, `docs/decisions.md` D18) — automated tests need to be fast, reproducible, and free to mutate/drop data without touching whatever a human is doing in the shared dev project.
+- **Isolation** (`tests/isolation/`): dedicated, required cross-tenant-leakage suite, run against the same ephemeral Postgres as integration tests, connected as the non-owner `app_user` role (architecture §5.3a) — introduced in Phase 1, re-run and extended every phase that adds a new entity.
+- **E2E** (Playwright): critical end-to-end user flows, run against the hosted Supabase dev project (the one environment where real Supabase Auth email delivery, etc. can be exercised).
 
 ---
 
@@ -19,11 +19,11 @@ Testing approach referenced throughout (defined once, applied per phase):
 **Objective**: Stand up the empty, working application shell and its quality gates. No business logic.
 
 **Scope**:
-- Next.js 15 (App Router, TypeScript) project scaffold.
+- Next.js (App Router, TypeScript) project scaffold — implemented on Next.js 16.x, the latest stable major at implementation time (`docs/decisions.md` D13).
 - ESLint + Prettier configuration, including the "no Prisma import outside `lib/server/services`" boundary rule (architecture §2).
 - Vitest configured for unit/integration tests; Playwright configured for e2e.
 - GitHub Actions CI workflow: install, lint, typecheck, unit tests, on every push.
-- Prisma initialized (`prisma/schema.prisma` present but minimal), pointed at a local Supabase Postgres instance (via Supabase CLI).
+- Prisma initialized (`prisma/schema.prisma` present but minimal). Docker/Supabase CLI were not available in the implementation environment, so schema/migration tooling was validated against Prisma's own ephemeral local dev Postgres (`npx prisma dev`) instead of a local Supabase stack — see `docs/decisions.md` D12. This local Postgres remains in use only as the ephemeral substrate for automated tests (per D18); it was never intended as "the development database," which is a hosted Supabase project from Phase 1 onward (D20).
 - Base folder structure created per `docs/architecture.md` §2, with a short `README.md` explaining the layout and the "services-only touch Prisma" rule.
 
 **Files/systems**: repository root config (`package.json`, `tsconfig.json`, `.eslintrc`, `.github/workflows/ci.yml`), `prisma/schema.prisma` (skeleton), `app/page.tsx` (placeholder), `README.md`.
@@ -31,12 +31,12 @@ Testing approach referenced throughout (defined once, applied per phase):
 **Dependencies**: none — first phase.
 
 **Verification**:
-- CI pipeline runs and passes on the initial commit.
+- CI pipeline runs and passes on the initial commit. *(Correction: the Phase 0 completion report claimed this based on running the same commands locally — GitHub Actions has never actually executed, since the repository is not yet a git repository. See `docs/decisions.md` D21. This line is not yet actually satisfied.)*
 - `npm run dev` boots the app locally with no errors.
-- `prisma migrate dev` runs successfully against local Supabase Postgres (even with an empty/near-empty schema).
+- `prisma migrate dev` runs successfully against a local Postgres instance (Prisma's local dev Postgres, per D12 — not yet the hosted Supabase project, which didn't exist during Phase 0), even with an empty/near-empty schema.
 - A trivial unit test and a trivial Playwright test both run green, proving all three test runners are wired correctly before any real logic is written.
 
-**Definition of done**: A blank, deployable, fully tooled Next.js app with CI green, ready for real schema/logic in Phase 1.
+**Definition of done**: A blank, deployable, fully tooled Next.js app with CI green, ready for real schema/logic in Phase 1. *(The CI-green portion of this is unmet as of the Phase 0 report — see the correction above and `docs/decisions.md` D21.)*
 
 ---
 
@@ -45,24 +45,34 @@ Testing approach referenced throughout (defined once, applied per phase):
 **Objective**: Build the security foundation every later phase depends on: core tenancy schema, authentication, and provably working tenant isolation. This is the highest-risk, most important phase in the plan.
 
 **Scope**:
-- Core schema: `gyms` (tenant record, includes an active/suspended status — not a delete), `gym_memberships` (`user_id`, `gym_id` nullable for Platform Admin, `role` enum: `platform_admin` / `gym_admin` / `gym_staff`).
-- RLS enabled on every tenant table that exists at this point, with policies per `docs/architecture.md` §5.2.
-- The `withTenant()` / `withPlatform()` Prisma transaction helpers (`lib/server/db.ts`) implementing the `SET LOCAL app.current_gym_id` pattern (architecture §5.3).
-- Session resolution (`lib/server/auth.ts`): Supabase session → `{ userId, gymId, role }`, plus `requireRole()` guard helpers.
-- Supabase Auth wiring: login, logout, password reset flows (`app/(auth)/`).
+- Environment: a hosted Supabase project dedicated to development (e.g. `ai-gym-saas-dev`), per `docs/decisions.md` D20 — not a local Docker/Supabase-CLI stack. Manual setup required (`docs/architecture.md` §9); see the Phase 1 preparation report for the exact console steps.
+- Bootstrap SQL (run once per environment, outside Prisma's migration history): creates the dedicated `app_user` runtime role — `NOBYPASSRLS`, not the owner of any table, granted only the DML it needs (architecture §5.3a).
+- Core schema: `gyms` (tenant record, active/suspended status — not a delete), `users` (internal identity record, `id` mirrors `auth.users.id`, no cross-schema FK — architecture §3), `gym_memberships` (`user_id`, `gym_id` nullable for Platform Admin, `role` enum: `PLATFORM_ADMIN` / `GYM_ADMIN` / `GYM_STAFF`, a `CHECK` constraint pairing role and nullable `gym_id`, a partial unique index preventing duplicate platform-admin rows per user).
+- RLS: `ENABLE` **and** `FORCE ROW LEVEL SECURITY` on `gyms`, `users`, `gym_memberships`. Policies are hand-authored raw SQL (not expressible in Prisma's schema DSL) in a dedicated migration, generated schema-only via `prisma migrate dev --create-only` and then hand-written — per `docs/architecture.md` §5.2–§5.3b. This includes the `gym_memberships` bootstrap policy (a row is visible if `user_id = current_setting('app.current_user_id', true)`, closing the chicken-and-egg problem of looking up a user's `gymId` before it's known).
+- The `withUser()` / `withTenant()` / `withPlatform()` Prisma transaction helpers (`lib/server/db.ts`), each setting the appropriate transaction-local session context via `SELECT set_config('app.current_user_id'/'app.current_gym_id'/'app.current_role', $1, true)` — **not** `SET LOCAL ... = ${value}`, which is not valid parameterized SQL (architecture §5.3). Three session settings total: `app.current_user_id`, `app.current_gym_id`, `app.current_role` (there is no separate `app.current_platform` setting — a Platform Admin session is represented by `app.current_role = 'PLATFORM_ADMIN'` with no `gymId` set, via `withPlatform()`).
+- Prisma client built with the `@prisma/adapter-pg` driver adapter (Prisma 7 requirement — no bundled query engine, architecture §5.6), connected via the pooled `DATABASE_URL`; migrations applied via the separate, non-pooled `DIRECT_URL`.
+- Session resolution (`lib/server/auth.ts`): Supabase session verified via `supabase.auth.getUser()` (never `getSession()` — architecture §3) → the `gym_memberships` bootstrap lookup (`lib/server/services/identity.ts`, run inside `withUser()`) → verified `{ userId, gymId, role }`, plus `requireRole()` guard helpers.
+- Supabase Auth wiring: login, logout, password reset flows (`app/(auth)/`), `middleware.ts` for session/token refresh.
 - Route-guard skeleton distinguishing the Platform Admin area from the per-gym area (no real feature pages yet, just the guarded shells).
 
-**Files/systems**: `prisma/schema.prisma` (gyms, gym_memberships), `lib/server/db.ts`, `lib/server/auth.ts`, `app/(auth)/*`, `app/(platform)/*` (shell), `app/(gym)/[gymId]/*` (shell), `tests/isolation/` (created here, first suite).
+**Files/systems**: `prisma/schema.prisma` (`Gym`, `User`, `GymMembership` models), `prisma/migrations/*` (schema migration + a separate hand-written RLS migration), `prisma/sql/bootstrap-app-role.sql` (environment-scoped, not a Prisma migration), `prisma.config.ts` (add `directUrl`, `shadowDatabaseUrl`), `lib/server/db.ts`, `lib/server/supabase.ts`, `lib/server/auth.ts`, `lib/server/errors.ts`, `lib/server/services/identity.ts`, `middleware.ts`, `app/(auth)/*`, `app/auth/callback/route.ts`, `app/(platform)/*` (shell), `app/(gym)/[gymId]/*` (shell), `tests/isolation/*` (created here, first suite), `tests/integration/auth-context.test.ts`, `tests/unit/authorization.test.ts`, `.github/workflows/ci.yml` (add a DB-backed job using a `postgres:16` service container).
 
-**Dependencies**: Phase 0.
+**Dependencies**: Phase 0. New packages: `@prisma/adapter-pg`, `pg`, `@types/pg` (dev), `@supabase/ssr`, `@supabase/supabase-js`, `server-only`.
 
 **Verification**:
-- **Isolation suite (required gate)**: seed two gyms with two users each; assert a Gym-A-scoped session cannot read or write any Gym-B row — including by directly guessing a Gym-B primary key — at both the service-function layer and via RLS directly (a raw query attempted without the correct `SET LOCAL` context must also fail).
-- Integration tests: RLS policies actually reject a cross-tenant `SET LOCAL` value (proves the database layer works independently of application code).
-- E2E: login → logout → password reset request flow works end-to-end against local Supabase Auth.
+- **Meta-test (checked first — everything below depends on it)**: the `app_user` role has `rolbypassrls = false`, and every tenant table (`gyms`, `users`, `gym_memberships`) has `relforcerowsecurity = true`. If this doesn't hold, RLS may be silently inert regardless of how correct the policies look (architecture §5.3a) — no other isolation test result means anything until this passes.
+- **Isolation suite (required gate)**, run against the ephemeral test Postgres, connected as `app_user`:
+  - Same-gym read: a Gym-A context can read Gym-A's own rows (guards against policies so strict they break the product).
+  - Cross-gym read, **raw SQL, no application code**: with `app.current_gym_id` set to Gym A (and separately, unset), a direct `SELECT` for Gym B's rows by known ID returns zero rows.
+  - Cross-gym mutation, raw SQL: `UPDATE`/`DELETE` against Gym B's rows from a Gym-A context affects zero rows; an `UPDATE ... SET gym_id = <Gym B>` from a Gym-A context is rejected by the policy's `WITH CHECK` clause, not just its `USING` clause.
+  - Bootstrap-lookup isolation: a session can only ever resolve its own `gym_memberships` row(s) via `app.current_user_id`; a forged/incorrect value cannot read another user's row.
+  - Role restriction (application layer, not RLS): a Gym Admin/Staff session calling a Platform-Admin-only action is rejected by `requireRole()`; a Gym-Staff-context `INSERT` into `gym_memberships` is rejected by the policy's `WITH CHECK` clause.
+  - Platform Admin data minimality: the platform-level gym-listing function is asserted to return only status/metadata fields, not gym business data — an explicit, bounded allowance, not an incidental one.
+- Integration test: `prisma migrate deploy` applied to a fresh ephemeral Postgres instance succeeds and results in the expected RLS state (belt-and-suspenders check on the meta-test, from the migration side).
+- E2E: login → logout → password reset request flow works end-to-end against the hosted Supabase dev project.
 - Unit tests: `requireRole()` correctly allows/denies each of the three roles for representative guarded actions.
 
-**Definition of done**: A Gym-A session cannot access Gym-B data under any tested condition, proven by an automated, named, CI-enforced test suite — not asserted by inspection. Nothing in later phases proceeds until this is true.
+**Definition of done**: A Gym-A session cannot access Gym-B data under any tested condition — proven by the automated, named, CI-enforced suite above (including the meta-test precondition), not asserted by inspection. Nothing in later phases proceeds until this is true.
 
 ---
 
