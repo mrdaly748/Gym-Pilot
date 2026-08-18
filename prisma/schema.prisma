@@ -1,8 +1,6 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
+// Phase 1 schema: identity + tenancy foundation only.
+// See docs/architecture.md §3 and §5 for the design this implements.
+//
 // Generated client lives under lib/server/ — this is intentional. Only
 // lib/server/services/** and lib/server/db.ts may import from it (see
 // docs/architecture.md §2 and the ESLint boundary rule in eslint.config.mjs).
@@ -13,4 +11,71 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum GymStatus {
+  ACTIVE
+  SUSPENDED
+
+  @@map("gym_status")
+}
+
+// Deliberately uppercase, matching docs/architecture.md §5.3's concrete
+// set_config(...) examples exactly (e.g. 'PLATFORM_ADMIN') — see
+// docs/decisions.md for the casing-consistency correction this follows.
+enum MembershipRole {
+  PLATFORM_ADMIN
+  GYM_ADMIN
+  GYM_STAFF
+
+  @@map("membership_role")
+}
+
+model Gym {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  status    GymStatus @default(ACTIVE)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  memberships GymMembership[]
+
+  @@map("gyms")
+}
+
+// Mirrors the corresponding Supabase auth.users.id (id is NOT DB-generated
+// here — it's assigned by the caller to match the Supabase Auth user).
+// Deliberately not FK'd into the `auth` schema — see docs/architecture.md §3
+// for why (shadow DB / CI plain-Postgres portability).
+model User {
+  id        String   @id @db.Uuid
+  email     String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  memberships GymMembership[]
+
+  @@map("users")
+}
+
+// gymId is nullable only for PLATFORM_ADMIN rows. The pairing is enforced by
+// a hand-authored CHECK constraint, and at most one PLATFORM_ADMIN row per
+// user is enforced by a hand-authored partial unique index — neither is
+// expressible in Prisma's schema DSL, so both live in
+// prisma/migrations/*_rls_core/migration.sql alongside the RLS policies.
+// See docs/architecture.md §3 and §5.3b.
+model GymMembership {
+  id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String         @map("user_id") @db.Uuid
+  gymId     String?        @map("gym_id") @db.Uuid
+  role      MembershipRole
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @default(now()) @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gym  Gym? @relation(fields: [gymId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([gymId])
+  @@map("gym_memberships")
 }

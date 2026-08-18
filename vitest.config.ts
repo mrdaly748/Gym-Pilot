@@ -9,7 +9,10 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["tests/unit/**/*.test.ts", "tests/integration/**/*.test.ts"],
+    // Unit tests only — no database. Integration/isolation tests (DB-backed)
+    // live in vitest.db.config.ts / `npm run test:db`, per
+    // docs/architecture.md §4.
+    include: ["tests/unit/**/*.test.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],

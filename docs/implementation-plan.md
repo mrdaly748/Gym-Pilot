@@ -52,10 +52,10 @@ Testing approach referenced throughout (defined once, applied per phase):
 - The `withUser()` / `withTenant()` / `withPlatform()` Prisma transaction helpers (`lib/server/db.ts`), each setting the appropriate transaction-local session context via `SELECT set_config('app.current_user_id'/'app.current_gym_id'/'app.current_role', $1, true)` — **not** `SET LOCAL ... = ${value}`, which is not valid parameterized SQL (architecture §5.3). Three session settings total: `app.current_user_id`, `app.current_gym_id`, `app.current_role` (there is no separate `app.current_platform` setting — a Platform Admin session is represented by `app.current_role = 'PLATFORM_ADMIN'` with no `gymId` set, via `withPlatform()`).
 - Prisma client built with the `@prisma/adapter-pg` driver adapter (Prisma 7 requirement — no bundled query engine, architecture §5.6), connected via the pooled `DATABASE_URL`; migrations applied via the separate, non-pooled `DIRECT_URL`.
 - Session resolution (`lib/server/auth.ts`): Supabase session verified via `supabase.auth.getUser()` (never `getSession()` — architecture §3) → the `gym_memberships` bootstrap lookup (`lib/server/services/identity.ts`, run inside `withUser()`) → verified `{ userId, gymId, role }`, plus `requireRole()` guard helpers.
-- Supabase Auth wiring: login, logout, password reset flows (`app/(auth)/`), `middleware.ts` for session/token refresh.
+- Supabase Auth wiring: login, logout, password reset flows (`app/(auth)/`), `proxy.ts` (Next.js 16's renamed `middleware.ts` convention) for session/token refresh.
 - Route-guard skeleton distinguishing the Platform Admin area from the per-gym area (no real feature pages yet, just the guarded shells).
 
-**Files/systems**: `prisma/schema.prisma` (`Gym`, `User`, `GymMembership` models), `prisma/migrations/*` (schema migration + a separate hand-written RLS migration), `prisma/sql/bootstrap-app-role.sql` (environment-scoped, not a Prisma migration), `prisma.config.ts` (add `directUrl`, `shadowDatabaseUrl`), `lib/server/db.ts`, `lib/server/supabase.ts`, `lib/server/auth.ts`, `lib/server/errors.ts`, `lib/server/services/identity.ts`, `middleware.ts`, `app/(auth)/*`, `app/auth/callback/route.ts`, `app/(platform)/*` (shell), `app/(gym)/[gymId]/*` (shell), `tests/isolation/*` (created here, first suite), `tests/integration/auth-context.test.ts`, `tests/unit/authorization.test.ts`, `.github/workflows/ci.yml` (add a DB-backed job using a `postgres:16` service container).
+**Files/systems**: `prisma/schema.prisma` (`Gym`, `User`, `GymMembership` models), `prisma/migrations/*` (schema migration + a separate hand-written RLS migration), `prisma/sql/bootstrap-app-role.sql` (environment-scoped, not a Prisma migration), `prisma.config.ts` (`url: env("DIRECT_URL")` — the installed Prisma version's config type has no `directUrl`/`shadowDatabaseUrl` fields; verified against the actual installed type, not assumed from newer docs), `lib/server/db.ts`, `lib/server/supabase.ts`, `lib/server/auth.ts`, `lib/server/authorization.ts` (pure role/gym checks, split out so they're unit-testable without a database), `lib/server/errors.ts`, `lib/server/services/identity.ts`, `proxy.ts` (Next.js 16's renamed `middleware.ts` convention), `app/(auth)/*`, `app/auth/callback/route.ts`, `app/platform/*` (shell), `app/gym/[gymId]/*` (shell), `tests/isolation/*` (created here, first suite), `tests/integration/auth-context.test.ts`, `tests/unit/authorization.test.ts`, `.github/workflows/ci.yml` (add a DB-backed job using a `postgres:16` service container).
 
 **Dependencies**: Phase 0. New packages: `@prisma/adapter-pg`, `pg`, `@types/pg` (dev), `@supabase/ssr`, `@supabase/supabase-js`, `server-only`.
 
@@ -85,7 +85,7 @@ Testing approach referenced throughout (defined once, applied per phase):
 - Gym Admin UI/actions: create/disable Gym Staff logins for their own gym (`staff/` route).
 - Suspended-gym behavior: a suspended gym's users get a clear, non-technical "account inactive" message on login/access attempts (spec §19), not a generic error.
 
-**Files/systems**: `lib/server/services/platformAdmin.ts`, `lib/server/services/gymStaff.ts` (staff-login management), `app/(platform)/gyms/*`, `app/(gym)/[gymId]/staff/*`.
+**Files/systems**: `lib/server/services/platformAdmin.ts`, `lib/server/services/gymStaff.ts` (staff-login management), `app/platform/gyms/*`, `app/gym/[gymId]/staff/*`.
 
 **Dependencies**: Phase 1 (schema, auth, roles, isolation all required).
 
@@ -107,7 +107,7 @@ Testing approach referenced throughout (defined once, applied per phase):
 - Membership Plan CRUD: create/edit/archive (never hard-delete once used); zero-price plans supported (trials/promotions).
 - Permission split: Gym Admin and Gym Staff can both register/edit members; only Gym Admin manages plans and archives anything.
 
-**Files/systems**: `prisma/schema.prisma` (members, membership_plans), `lib/server/services/members.ts`, `lib/server/services/plans.ts`, `app/(gym)/[gymId]/members/*`, `app/(gym)/[gymId]/memberships/plans/*` (or similar plan-management route).
+**Files/systems**: `prisma/schema.prisma` (members, membership_plans), `lib/server/services/members.ts`, `lib/server/services/plans.ts`, `app/gym/[gymId]/members/*`, `app/gym/[gymId]/memberships/plans/*` (or similar plan-management route).
 
 **Dependencies**: Phase 2 (roles and gym context must exist).
 
@@ -130,7 +130,7 @@ Testing approach referenced throughout (defined once, applied per phase):
 - Gym Admin-only manual early cancellation, distinct from natural expiration (spec §13 Rule 7).
 - **Metrics Service v1** (`lib/server/services/metrics.ts`): the canonical, unit-tested status-derivation function — active / expiring soon / expired / frozen / cancelled — computed at query time from stored dates/flags (architecture §5.5), plus "new member" derivation.
 
-**Files/systems**: `prisma/schema.prisma` (memberships, membership_freezes if modeled separately), `lib/server/services/memberships.ts`, `lib/server/services/metrics.ts` (new), `app/(gym)/[gymId]/memberships/*`.
+**Files/systems**: `prisma/schema.prisma` (memberships, membership_freezes if modeled separately), `lib/server/services/memberships.ts`, `lib/server/services/metrics.ts` (new), `app/gym/[gymId]/memberships/*`.
 
 **Dependencies**: Phase 3.
 
@@ -153,7 +153,7 @@ Testing approach referenced throughout (defined once, applied per phase):
 - Audit trail: who recorded/adjusted a payment, and when.
 - **Metrics Service extended**: revenue (cash-basis, per period) and outstanding-payments aggregation (spec §13 Rules 5 and 9).
 
-**Files/systems**: `prisma/schema.prisma` (payments, payment_adjustments), `lib/server/services/payments.ts`, `lib/server/services/metrics.ts` (extended), `app/(gym)/[gymId]/payments/*`.
+**Files/systems**: `prisma/schema.prisma` (payments, payment_adjustments), `lib/server/services/payments.ts`, `lib/server/services/metrics.ts` (extended), `app/gym/[gymId]/payments/*`.
 
 **Dependencies**: Phase 4 (payments attach to memberships).
 
@@ -175,7 +175,7 @@ Testing approach referenced throughout (defined once, applied per phase):
 - Attendance history views (per member, per gym/period).
 - **Metrics Service extended**: attendance metrics — total check-ins and unique visitors per period (spec §13 Rule 10).
 
-**Files/systems**: `prisma/schema.prisma` (attendance_checkins), `lib/server/services/attendance.ts`, `lib/server/services/metrics.ts` (extended), `app/(gym)/[gymId]/attendance/*`.
+**Files/systems**: `prisma/schema.prisma` (attendance_checkins), `lib/server/services/attendance.ts`, `lib/server/services/metrics.ts` (extended), `app/gym/[gymId]/attendance/*`.
 
 **Dependencies**: Phase 4 (needs members/memberships to check in against and to correctly surface status).
 
@@ -196,7 +196,7 @@ Testing approach referenced throughout (defined once, applied per phase):
 - Expense CRUD (category from a small fixed/extendable set, amount, date, note), archive-not-delete.
 - Both entirely Gym Admin-only — no Gym Staff visibility or access at the API/service level, not just the UI (spec §11.6, §11.7).
 
-**Files/systems**: `prisma/schema.prisma` (trainers, expenses), `lib/server/services/trainers.ts`, `lib/server/services/expenses.ts`, `app/(gym)/[gymId]/trainers/*`, `app/(gym)/[gymId]/expenses/*`.
+**Files/systems**: `prisma/schema.prisma` (trainers, expenses), `lib/server/services/trainers.ts`, `lib/server/services/expenses.ts`, `app/gym/[gymId]/trainers/*`, `app/gym/[gymId]/expenses/*`.
 
 **Dependencies**: Phase 3 (members exist, for trainer↔member linkage); otherwise independent of Phases 4–6.
 
@@ -217,7 +217,7 @@ Testing approach referenced throughout (defined once, applied per phase):
 - Analytics (Gym Admin only): trends over time, period-over-period comparison, membership plan performance.
 - All figures sourced exclusively from the Metrics Service (`lib/server/services/metrics.ts`) built in Phases 4–6 — no parallel calculation logic introduced here.
 
-**Files/systems**: `app/(gym)/[gymId]/dashboard/*`, `app/(gym)/[gymId]/analytics/*`. No new service-layer business logic expected beyond composing existing Metrics Service calls; if a genuinely new aggregation is needed, it's added to `metrics.ts`, not computed ad hoc in a route/component.
+**Files/systems**: `app/gym/[gymId]/dashboard/*`, `app/gym/[gymId]/analytics/*`. No new service-layer business logic expected beyond composing existing Metrics Service calls; if a genuinely new aggregation is needed, it's added to `metrics.ts`, not computed ad hoc in a route/component.
 
 **Dependencies**: Phases 5, 6, 7 (needs revenue, outstanding payments, attendance, and — for analytics plan-performance — plan/membership data all present).
 
@@ -244,7 +244,7 @@ Testing approach referenced throughout (defined once, applied per phase):
 - `/api/ai` streaming Route Handler + `assistant/` UI (Gym Admin only).
 - Per-gym daily usage counter for basic cost control (architecture §6.7).
 
-**Files/systems**: `lib/ai/*` (new), `app/api/ai/route.ts`, `app/(gym)/[gymId]/assistant/*`.
+**Files/systems**: `lib/ai/*` (new), `app/api/ai/route.ts`, `app/gym/[gymId]/assistant/*`.
 
 **Dependencies**: Phase 8 (the Metrics Service must be complete and already proven correct — the AI adds no new calculation logic, only a natural-language interface to existing, tested numbers).
 

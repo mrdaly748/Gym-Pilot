@@ -40,7 +40,15 @@ const eslintConfig = defineConfig([
   ...nextTs,
   {
     files: ["**/*.{ts,tsx}"],
-    ignores: ["lib/server/services/**", "lib/server/db.ts"],
+    // tests/integration/** is exempted too: it deliberately tests
+    // lib/server/db.ts's withTenant()/withPlatform()/prisma directly,
+    // which is a legitimate, intentional exception for testing that module
+    // itself — see docs/implementation-plan.md Phase 1.
+    ignores: [
+      "lib/server/services/**",
+      "lib/server/db.ts",
+      "tests/integration/**",
+    ],
     ...noDirectPrismaAccess,
   },
   // Override default ignores of eslint-config-next.

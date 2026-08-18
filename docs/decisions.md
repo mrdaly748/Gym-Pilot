@@ -152,8 +152,9 @@ This is the running record of technical decisions: what was chosen, what alterna
 | D11 | Exact data retention/deletion timeline | Phase 10 (not earlier) | Product decision, possibly legal input |
 | D12 | ~~Docker/Supabase CLI unavailable for Phase 0~~ | — | Resolved by D20 (hosted Supabase dev project) — no longer open |
 | D14 | npm audit: 3 high-severity advisories in Prisma CLI devDependency | None (dev-tool only) | Your call: accept and monitor, or pin Prisma to 6.12.x |
-| D19 | Shadow-DB fallback ladder — which rung actually works | Phase 1 (migration authoring) | Testing against the real Supabase dev project once created |
-| D21 | Phase 0 "CI green" claim was inaccurate — CI has never executed | Verifying any future "CI passed" claim | `git init` + a remote — manual step, see the Phase 1 report |
+| D19 | Shadow-DB fallback ladder — which rung actually works | Phase 1 migration authoring against real Supabase | Testing against the real Supabase dev project once created |
+| D21 | ~~Phase 0 "CI green" claim was inaccurate~~ | — | Resolved — CI now genuinely executes (git initialized, pushed, has caught real failures). Phase 1's changes are not yet pushed/CI-verified — see the Phase 1 report. |
+| — | Hosted Supabase dev project (D20) still doesn't exist | Supabase Auth verification (Phase 1's E2E login/logout/reset flow, and D19) | You creating the project — manual step, exact console steps in the Phase 1 preparation report |
 
 Phases 0–8 proceed on the confirmed decisions in this document; the items above are the ones genuinely requiring your input or a real environment to resolve.
 
@@ -271,5 +272,31 @@ The local `prisma dev` Postgres server was left running in the background (`npx 
 
 **Why recorded here rather than just fixed silently**: this project's own standing rule is not to claim something is verified when only local behavior was checked. The Phase 0 report didn't meet that bar for the CI claim specifically, and the honest fix is a recorded correction, not a quiet edit to old reporting.
 
-**Status**: Open until git is initialized and a workflow run is observed to actually complete on GitHub. Manual steps required from the project owner — git cannot be initialized or pushed without explicit instruction, per standing constraints on this project.
+**Status**: Resolved/superseded. Git was subsequently initialized and pushed by the project owner, and GitHub Actions has genuinely executed since — it caught two real issues (an out-of-sync lockfile; a missing Next.js typegen step before `tsc`), both fixed in follow-up commits. The original claim was inaccurate at the time it was made; CI now demonstrably runs. Note: the Phase 1 changes recorded in D22/D23 below have **not** been pushed or observed running in CI as of this entry — that verification is still outstanding, and this document does not claim otherwise.
+
+---
+
+## D22 — Local test substrate corrected: `embedded-postgres`, not `prisma dev` (D18 revised)
+
+**Decision**: `tests/helpers/testDb.ts` uses `embedded-postgres` (a genuine native Postgres binary) for local isolation/integration test runs, not Prisma's local dev database (`npx prisma dev`) as D18/D20 assumed. CI is unaffected — it already used, and continues to use, a real `postgres:16` service container.
+
+**Why**: during Phase 1 implementation, `npx prisma dev` was empirically found to **not enforce real Postgres role-based authentication** — every connection was silently authenticated as the `postgres` superuser regardless of the username/password supplied in the connection string (verified directly: `SELECT current_user` returned `postgres` even when connecting as `app_user` with a deliberately wrong-looking role). This makes it structurally incapable of validating the one thing Phase 1 exists to prove — that `app_user`'s restricted privileges and RLS policies actually constrain a non-owner role. A raw `@electric-sql/pglite`/`pglite-socket` connection (the engine `prisma dev` is itself built on) was tested directly and has the identical limitation, ruling out a lighter fix. `embedded-postgres` (a real, native `pg_ctl`-managed Postgres 18 binary, downloaded once per platform) was verified to correctly enforce role separation and privilege checks before being adopted — this was not assumed, it was tested the same way the `prisma dev` limitation itself was discovered.
+
+**Alternatives considered**: Docker (unavailable in this environment, per D12); a hosted Supabase dev project (no credentials available, per D20); accepting `prisma dev`'s behavior and only trusting owner-connection checks (rejected — this would mean the isolation suite could pass with RLS silently non-functional for the actual runtime role, which is exactly the failure mode the meta-test exists to catch).
+
+**Status**: Confirmed, implemented, and verified — `tests/helpers/testDb.ts`'s meta-test (`tests/isolation/00-meta.test.ts`) includes an explicit `SELECT current_user` assertion specifically so this exact failure mode can never regress silently again. `embedded-postgres` has no stable (non-beta) release line as of this entry — acceptable for a local-only test-infrastructure dependency (never used in CI or production), flagged for awareness rather than treated as blocking.
+
+---
+
+## D23 — Minor Phase 1 corrections verified against actual installed-version/runtime behavior
+
+**Decision**: Several small implementation details were corrected during Phase 1 after being checked against reality rather than assumed from documentation, each also fixed directly in `docs/architecture.md` at the point of discovery:
+
+- **Prisma config has no `directUrl` field in the installed version.** `@prisma/config`'s actual `Datasource` type (`node_modules/@prisma/config/dist/index.d.ts`) supports only `url` and `shadowDatabaseUrl` — some Prisma 7 documentation describes a `directUrl` field that doesn't exist in the version actually installed (7.9.1). Resolved by having `prisma.config.ts`'s `url` point at `DIRECT_URL` (the CLI always acts as the migration-owner role) while the application's runtime Prisma client reads `DATABASE_URL` directly and independently in `lib/server/db.ts`, entirely bypassing `prisma.config.ts` (which only ever affects CLI commands). See architecture §5.6.
+- **Next.js 16 renamed `middleware.ts` to `proxy.ts`.** Confirmed against the installed Next.js version's own bundled docs (`node_modules/next/dist/docs/.../proxy.md`) after the dev server logged a deprecation warning. Same API (`NextRequest`/`NextResponse`/`config.matcher` unchanged) — a mechanical rename, applied immediately since this is new code, not a legacy file needing gradual migration.
+- **`(platform)`/`(gym)` route groups don't produce the URLs the design assumed.** Route group folders (parentheses) add no URL segment — `app/(platform)/page.tsx` would have resolved to `/`, colliding with the existing root page, and `app/(gym)/[gymId]/page.tsx` would have resolved to `/[gymId]` at the top level, not `/gym/:gymId` as the redirect logic in `app/(auth)/actions.ts` assumes. Caught by actually running `next build` and inspecting the emitted route list, not by inspection alone. Fixed by using real folders (`app/platform/`, `app/gym/[gymId]/`) instead of route groups for these two areas; `(auth)/` remains a route group since its routes (`/login`, `/forgot-password`, `/reset-password`) were never meant to have a URL prefix and don't collide with anything.
+
+**Why recorded together rather than as separate entries**: each is a small, self-contained, verified-not-assumed correction in the same spirit as D15/D19, grouped here to avoid one decision entry per minor fix. None represent a design change — each is a case of the initial assumption being checked against the actually-installed software and corrected.
+
+**Status**: Confirmed, implemented, and verified (typecheck, build, and manual route-by-route HTTP checks all pass with the corrected structure).
 

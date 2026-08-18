@@ -6,7 +6,7 @@ on:
 
 jobs:
   build:
-    name: Lint, typecheck, unit tests
+    name: Lint, typecheck, unit tests, build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -21,6 +21,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate Prisma client
+        run: npx prisma generate
+
       - name: Lint
         run: npm run lint
 
@@ -29,3 +32,49 @@ jobs:
 
       - name: Unit tests
         run: npm run test
+
+      - name: Build
+        run: npm run build
+        env:
+          # Dummy values so `next build`'s type-checking pass and static
+          # generation succeed without real Supabase/DB credentials. No
+          # runtime DB/Supabase calls happen during a static build.
+          DATABASE_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
+          NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder"
+
+  test-db:
+    name: Isolation & integration tests (real Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test_owner_pw_ephemeral
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Isolation & integration tests
+        run: npm run test:db

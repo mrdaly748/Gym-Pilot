@@ -27,11 +27,11 @@ This is revisited only if a genuinely separate deployable ever appears (e.g., a 
 ## 2. Frontend / Backend Structure
 
 ```
-middleware.ts                  Supabase session/token refresh (runs on every request)
+proxy.ts                       Supabase session/token refresh (runs on every request) — named proxy.ts, not middleware.ts: Next.js 16 renamed the "middleware" file convention to "proxy" (same API, verified against the installed Next.js version's own bundled docs)
 app/
-  (auth)/                      Login, password reset — Supabase Auth-backed flows
-  (platform)/                  Platform Admin area: gym list, create gym, suspend/reactivate
-  (gym)/[gymId]/                Gym Admin + Gym Staff area — every route here is tenant-scoped
+  (auth)/                      Login, password reset — Supabase Auth-backed flows (route GROUP: organizational only, adds no URL segment — /login, /forgot-password, etc. stay top-level)
+  platform/                    Platform Admin area (real folder, not a route group — /platform/...): gym list, create gym, suspend/reactivate
+  gym/[gymId]/                  Gym Admin + Gym Staff area (real folder — /gym/:gymId/...) — every route here is tenant-scoped
     dashboard/
     members/
     memberships/
@@ -200,14 +200,14 @@ Membership status (active / expiring soon / expired / frozen / cancelled), "new 
 ### 5.6 ORM
 **Prisma** (major version 7). Mature migration workflow (`prisma migrate dev` / `deploy`), strong TypeScript ergonomics, and a well-documented community pattern for exactly the RLS-transaction approach in §5.3. See `docs/decisions.md` #3 for the comparison against Drizzle.
 
-**Prisma 7 specifics that affect this project concretely** (not true of earlier Prisma majors, worth stating so it isn't re-discovered later):
+**Prisma 7 specifics that affect this project concretely** (not true of earlier Prisma majors, worth stating so it isn't re-discovered later — verified against the actually-installed version's real types, not assumed from documentation that turned out to describe a newer point release):
 - There is no bundled query-engine binary. Postgres access requires an explicit **driver adapter** — `@prisma/adapter-pg`, wrapping the standard `pg` Node driver — constructed with a connection string and passed to `new PrismaClient({ adapter })`. This doesn't change the RLS-transaction design in §5.3: `$transaction()` still checks out one connection for the whole transaction regardless of adapter, which is what the `set_config(..., true)` pattern depends on.
-- `directUrl` and `shadowDatabaseUrl` (needed for migrations and drift detection, respectively) are configured in `prisma.config.ts`'s `datasource` block via the `env()` helper — not in `schema.prisma`'s `datasource` block, which is where they lived in Prisma 5/6.
+- The installed Prisma version's config type (`@prisma/config`'s `Datasource`) supports only `url` and `shadowDatabaseUrl` in `prisma.config.ts` — **no `directUrl` field**, unlike some Prisma 7 documentation (this was checked against `node_modules/@prisma/config/dist/index.d.ts` directly after a type error, not assumed). The two-connection-string design is achieved differently as a result (see below), not abandoned.
 - Environment variables are not auto-loaded by the CLI; `prisma.config.ts` explicitly imports `dotenv/config` (already the case in this repo since Phase 0).
 
-**Two connection strings, two purposes, both pointed at the same Supabase project:**
-- `DATABASE_URL` — the **pooled** connection (Supabase's Supavisor pooler, transaction mode, port 6543). Used by the `pg` adapter at application runtime. Safe under transaction-mode pooling specifically *because* our RLS pattern always keeps the `set_config` calls and the real query inside one `$transaction` — exactly the one-transaction-per-connection-checkout model transaction-mode pooling is built for.
-- `DIRECT_URL` — the **direct**, non-pooled connection (port 5432). Used only by `prisma migrate dev`/`deploy`, since the migration engine's advisory locks and (for `migrate dev`) shadow-database creation don't reliably work through a transaction pooler.
+**Two connection strings, two purposes, both pointed at the same Supabase project — but only one of them ever passes through `prisma.config.ts`:**
+- `DATABASE_URL` — the **pooled** connection (Supabase's Supavisor pooler, transaction mode, port 6543), connected as the least-privilege `app_user` role. Read directly by `lib/server/db.ts` at application runtime (`new PrismaPg({ connectionString: process.env.DATABASE_URL })`) — **independently of `prisma.config.ts`**, which only affects CLI commands (`generate`, `migrate`), never the running application. Safe under transaction-mode pooling specifically *because* our RLS pattern always keeps the `set_config` calls and the real query inside one `$transaction` — exactly the one-transaction-per-connection-checkout model transaction-mode pooling is built for.
+- `DIRECT_URL` — the **direct**, non-pooled connection (port 5432), connected as the migration-owner role (never `app_user`). This is what `prisma.config.ts`'s `datasource.url` is set to (via `env("DIRECT_URL")`) — the Prisma CLI always operates as the owner role for schema commands, since the migration engine's advisory locks don't reliably work through a transaction pooler.
 
 ### 5.7 Financial data integrity
 Payments and expenses are **append-only**. There is no `UPDATE`/`DELETE` path exposed anywhere in the service layer for a saved payment or expense row — corrections are new "adjustment" rows referencing the original, per spec Business Rule 11. Voiding/adjusting is Gym Admin-only, enforced by the same role-guard mechanism as every other restricted action (§4), and is covered by the financial-integrity test suite (Phase 5).
