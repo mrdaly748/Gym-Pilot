@@ -206,7 +206,7 @@ export function getAppUserPool(): Pool {
 
 export async function resetTestData(owner: Pool): Promise<void> {
   await owner.query(
-    "TRUNCATE members, membership_plans, gym_memberships, gyms, users RESTART IDENTITY CASCADE",
+    "TRUNCATE membership_freezes, memberships, members, membership_plans, gym_memberships, gyms, users RESTART IDENTITY CASCADE",
   );
 }
 
@@ -309,6 +309,61 @@ export async function seedPlan(
       args.durationDays ?? 30,
       args.archivedAt ?? null,
     ],
+  );
+  return result.rows[0];
+}
+
+export type SeededMembership2 = { id: string; startDate: string; endDate: string };
+export async function seedMembershipRecord(
+  owner: Pool,
+  args: {
+    gymId: string;
+    memberId: string;
+    planId: string;
+    planNameSnapshot?: string;
+    priceMillimesSnapshot?: number;
+    durationDaysSnapshot?: number;
+    startDate: Date;
+    endDate: Date;
+    cancelledAt?: Date;
+  },
+): Promise<SeededMembership2> {
+  const result = await owner.query<{ id: string; start_date: string; end_date: string }>(
+    `INSERT INTO memberships
+       (gym_id, member_id, plan_id, plan_name_snapshot, price_millimes_snapshot, duration_days_snapshot, start_date, end_date, cancelled_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING id, start_date, end_date`,
+    [
+      args.gymId,
+      args.memberId,
+      args.planId,
+      args.planNameSnapshot ?? "Monthly",
+      args.priceMillimesSnapshot ?? 50000,
+      args.durationDaysSnapshot ?? 30,
+      args.startDate,
+      args.endDate,
+      args.cancelledAt ?? null,
+    ],
+  );
+  const row = result.rows[0];
+  return { id: row.id, startDate: row.start_date, endDate: row.end_date };
+}
+
+export type SeededFreeze = { id: string };
+export async function seedFreeze(
+  owner: Pool,
+  args: {
+    gymId: string;
+    membershipId: string;
+    frozenAt: Date;
+    resumedAt?: Date;
+  },
+): Promise<SeededFreeze> {
+  const result = await owner.query<SeededFreeze>(
+    `INSERT INTO membership_freezes (gym_id, membership_id, frozen_at, resumed_at)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id`,
+    [args.gymId, args.membershipId, args.frozenAt, args.resumedAt ?? null],
   );
   return result.rows[0];
 }

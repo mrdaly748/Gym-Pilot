@@ -38,9 +38,11 @@ model Gym {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
 
-  memberships     GymMembership[]
-  members         Member[]
-  membershipPlans MembershipPlan[]
+  memberships       GymMembership[]
+  members           Member[]
+  membershipPlans   MembershipPlan[]
+  memberMemberships Membership[]
+  membershipFreezes MembershipFreeze[]
 
   @@map("gyms")
 }
@@ -111,7 +113,8 @@ model Member {
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at")
 
-  gym Gym @relation(fields: [gymId], references: [id], onDelete: Restrict)
+  gym         Gym          @relation(fields: [gymId], references: [id], onDelete: Restrict)
+  memberships Membership[]
 
   @@index([gymId])
   @@index([gymId, phoneNormalized])
@@ -133,8 +136,73 @@ model MembershipPlan {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at")
 
-  gym Gym @relation(fields: [gymId], references: [id], onDelete: Restrict)
+  gym         Gym          @relation(fields: [gymId], references: [id], onDelete: Restrict)
+  memberships Membership[]
 
   @@index([gymId])
   @@map("membership_plans")
+}
+
+// Phase 4: connects a Member to a MembershipPlan over time. Deliberately no
+// stored status column (docs/architecture.md §5.5) — active/expiring
+// soon/expired/frozen/cancelled is derived at query time by
+// lib/server/services/metrics.ts from startDate/endDate/cancelledAt plus
+// this membership's MembershipFreeze rows. Same no-Platform-Admin-bypass
+// rule as Member/MembershipPlan (see the RLS migration).
+//
+// Plan terms are snapshotted at assignment time (name/price/duration) so a
+// later edit to MembershipPlan can never retroactively change an
+// already-sold membership's terms (product-spec.md §18) — `planId` is kept
+// only for traceability back to the plan actually sold, never re-read for
+// the membership's own terms.
+model Membership {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gymId                 String    @map("gym_id") @db.Uuid
+  memberId              String    @map("member_id") @db.Uuid
+  planId                String    @map("plan_id") @db.Uuid
+  planNameSnapshot       String   @map("plan_name_snapshot")
+  priceMillimesSnapshot  Int      @map("price_millimes_snapshot")
+  durationDaysSnapshot   Int      @map("duration_days_snapshot")
+  startDate             DateTime  @db.Date @map("start_date")
+  // Mutable — shifted forward by the frozen-day count each time a freeze
+  // resumes (product-spec.md §13 Rule 6). Not a "status"; a fact about when
+  // the membership's term actually ends.
+  endDate               DateTime  @db.Date @map("end_date")
+  // Gym-Admin-only manual early cancellation, distinct from natural
+  // expiration (product-spec.md §13 Rule 7). A cancelled membership is
+  // permanent — see the RLS migration's WITH CHECK for how Gym Staff is
+  // blocked from ever setting or touching this.
+  cancelledAt           DateTime? @map("cancelled_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  gym     Gym                @relation(fields: [gymId], references: [id], onDelete: Restrict)
+  member  Member             @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  plan    MembershipPlan     @relation(fields: [planId], references: [id], onDelete: Restrict)
+  freezes MembershipFreeze[]
+
+  @@index([gymId])
+  @@index([memberId])
+  @@map("memberships")
+}
+
+// One row per freeze period (product-spec.md §13 Rule 6) — a dedicated
+// table, not fields on Membership, so a membership's full freeze history
+// survives repeated freeze/resume cycles without ambiguity about which
+// period is "current." `resumedAt IS NULL` means still frozen.
+model MembershipFreeze {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gymId        String    @map("gym_id") @db.Uuid
+  membershipId String    @map("membership_id") @db.Uuid
+  frozenAt     DateTime  @map("frozen_at")
+  resumedAt    DateTime? @map("resumed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  gym        Gym        @relation(fields: [gymId], references: [id], onDelete: Restrict)
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+
+  @@index([gymId])
+  @@index([membershipId])
+  @@map("membership_freezes")
 }
