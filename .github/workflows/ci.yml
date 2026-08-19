@@ -23,6 +23,14 @@ jobs:
 
       - name: Generate Prisma client
         run: npx prisma generate
+        env:
+          # prisma.config.ts resolves DIRECT_URL at config-load time for
+          # every Prisma CLI command (docs/architecture.md §5.6) — but
+          # `prisma generate` itself never opens a database connection, it
+          # only reads schema.prisma and writes the generated client code.
+          # A syntactically-valid placeholder is sufficient and safe here,
+          # same reasoning as the Build step's placeholder DATABASE_URL below.
+          DIRECT_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
 
       - name: Lint
         run: npm run lint
@@ -75,6 +83,14 @@ jobs:
 
       - name: Generate Prisma client
         run: npx prisma generate
+        env:
+          # Same as the build job's Generate Prisma client step: only
+          # needed so prisma.config.ts's env("DIRECT_URL") resolves at
+          # config-load time — `prisma generate` makes no DB connection.
+          # The actual test run below connects to the postgres service
+          # container itself, via tests/helpers/testDb.ts's own hardcoded
+          # owner URL (IS_CI branch), never via this placeholder.
+          DIRECT_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
 
       - name: Isolation & integration tests
         run: npm run test:db
