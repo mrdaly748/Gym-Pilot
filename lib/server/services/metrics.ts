@@ -111,3 +111,81 @@ export function addDays(date: Date, days: number): Date {
   result.setDate(result.getDate() + days);
   return result;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 5: payments & financial integrity (product-spec.md §13 Rules 5, 9, 11)
+// ---------------------------------------------------------------------------
+
+export type AdjustmentForCalc = {
+  amountMillimes: number;
+  createdAt: Date;
+};
+
+export type PaymentForCalc = {
+  amountMillimes: number;
+  paidAt: Date;
+  adjustments: AdjustmentForCalc[];
+};
+
+function isWithinPeriod(date: Date, periodStart: Date, periodEnd: Date): boolean {
+  return isSameOrBefore(periodStart, date) && isSameOrBefore(date, periodEnd);
+}
+
+/**
+ * A payment's effective amount is its recorded amount plus every
+ * adjustment's signed delta against it (Rule 11) — never a replacement
+ * value, always additive, so the original amount and every correction
+ * remain independently visible and summable.
+ */
+export function effectivePaymentAmount(payment: PaymentForCalc): number {
+  return (
+    payment.amountMillimes +
+    payment.adjustments.reduce((sum, a) => sum + a.amountMillimes, 0)
+  );
+}
+
+/**
+ * Rule 5: outstanding balance for one membership = its (snapshotted) plan
+ * price minus the sum of its payments' effective amounts. Deliberately
+ * takes the snapshot price as a parameter rather than reading
+ * MembershipPlan — the caller must pass `membership.priceMillimesSnapshot`,
+ * never the live plan's current price, so a later plan edit can never
+ * retroactively change a historical balance (product-spec.md §18).
+ */
+export function outstandingBalance(
+  planPriceMillimesSnapshot: number,
+  payments: PaymentForCalc[],
+): number {
+  const totalEffective = payments.reduce(
+    (sum, p) => sum + effectivePaymentAmount(p),
+    0,
+  );
+  return planPriceMillimesSnapshot - totalEffective;
+}
+
+/**
+ * Rule 9: revenue for a period is cash-basis — the sum of financial events
+ * *recorded* within that period, not retroactively reattributed. A
+ * payment's amount contributes to the period containing its `paidAt`; an
+ * adjustment's delta contributes to the period containing its own
+ * `createdAt`, independently — so a correction made in a later period never
+ * rewrites an earlier, already-closed period's reported revenue.
+ */
+export function revenueForPeriod(
+  payments: PaymentForCalc[],
+  periodStart: Date,
+  periodEnd: Date,
+): number {
+  let total = 0;
+  for (const payment of payments) {
+    if (isWithinPeriod(payment.paidAt, periodStart, periodEnd)) {
+      total += payment.amountMillimes;
+    }
+    for (const adjustment of payment.adjustments) {
+      if (isWithinPeriod(adjustment.createdAt, periodStart, periodEnd)) {
+        total += adjustment.amountMillimes;
+      }
+    }
+  }
+  return total;
+}

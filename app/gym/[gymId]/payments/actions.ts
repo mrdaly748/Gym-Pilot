@@ -1,0 +1,89 @@
+"use server";
+
+import { redirect } from "next/navigation";
+import { requireGym, requireRole } from "@/lib/server/auth";
+import { adjustPayment, recordPayment } from "@/lib/server/services/payments";
+import { NotFoundError, ValidationError } from "@/lib/server/errors";
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ValidationError || error instanceof NotFoundError) {
+    return error.message;
+  }
+  return fallback;
+}
+
+export async function recordPaymentAction(formData: FormData): Promise<void> {
+  const gymId = String(formData.get("gymId") ?? "");
+  const session = await requireGym(gymId);
+  await requireRole("GYM_ADMIN", "GYM_STAFF");
+
+  const membershipId = String(formData.get("membershipId") ?? "");
+  const amountMillimes = Math.round(
+    Number.parseFloat(String(formData.get("amount") ?? "")) * 1000,
+  );
+  const method = String(formData.get("method") ?? "");
+
+  try {
+    await recordPayment(
+      { userId: session.userId, gymId, role: session.role },
+      { membershipId, amountMillimes, method },
+    );
+  } catch (error) {
+    const message = errorMessage(error, "Could not record payment.");
+    redirect(`/gym/${gymId}/payments?error=${encodeURIComponent(message)}`);
+  }
+
+  redirect(`/gym/${gymId}/payments`);
+}
+
+/** Gym Admin only — requireRole enforces this here; the RLS policy (Gym-Admin-only INSERT) enforces it independently at the database layer. */
+export async function adjustPaymentAction(formData: FormData): Promise<void> {
+  const gymId = String(formData.get("gymId") ?? "");
+  const session = await requireGym(gymId);
+  await requireRole("GYM_ADMIN");
+
+  const paymentId = String(formData.get("paymentId") ?? "");
+  const amountMillimes = Math.round(
+    Number.parseFloat(String(formData.get("amount") ?? "")) * 1000,
+  );
+  const reason = String(formData.get("reason") ?? "") || undefined;
+
+  try {
+    await adjustPayment(
+      { userId: session.userId, gymId, role: session.role },
+      paymentId,
+      { amountMillimes, reason },
+    );
+  } catch (error) {
+    const message = errorMessage(error, "Could not adjust payment.");
+    redirect(`/gym/${gymId}/payments?error=${encodeURIComponent(message)}`);
+  }
+
+  redirect(`/gym/${gymId}/payments`);
+}
+
+/** A full void is just an adjustment for the negative of the current effective amount — same mechanism as adjustPaymentAction, a distinct action only in the UI. */
+export async function voidPaymentAction(formData: FormData): Promise<void> {
+  const gymId = String(formData.get("gymId") ?? "");
+  const session = await requireGym(gymId);
+  await requireRole("GYM_ADMIN");
+
+  const paymentId = String(formData.get("paymentId") ?? "");
+  const effectiveAmountMillimes = Number.parseInt(
+    String(formData.get("effectiveAmountMillimes") ?? "0"),
+    10,
+  );
+
+  try {
+    await adjustPayment(
+      { userId: session.userId, gymId, role: session.role },
+      paymentId,
+      { amountMillimes: -effectiveAmountMillimes, reason: "Voided" },
+    );
+  } catch (error) {
+    const message = errorMessage(error, "Could not void payment.");
+    redirect(`/gym/${gymId}/payments?error=${encodeURIComponent(message)}`);
+  }
+
+  redirect(`/gym/${gymId}/payments`);
+}

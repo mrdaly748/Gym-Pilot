@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   addDays,
   deriveMembershipStatus,
+  effectivePaymentAmount,
   frozenDays,
   isActiveMember,
   isCurrentlyFrozen,
   isNewMember,
+  outstandingBalance,
+  revenueForPeriod,
   type MembershipForStatus,
+  type PaymentForCalc,
 } from "@/lib/server/services/metrics";
 
 const NOW = new Date("2026-06-15T12:00:00Z");
@@ -174,5 +178,116 @@ describe("frozenDays / addDays (the freeze-resume date-shift math)", () => {
     endDate = addDays(endDate, frozenDays(new Date("2026-06-05"), new Date("2026-06-08"))); // +3
     endDate = addDays(endDate, frozenDays(new Date("2026-06-20"), new Date("2026-06-22"))); // +2
     expect(endDate.toISOString().slice(0, 10)).toBe("2026-07-06");
+  });
+});
+
+function payment(overrides: Partial<PaymentForCalc> = {}): PaymentForCalc {
+  return {
+    amountMillimes: 50000,
+    paidAt: new Date("2026-06-10"),
+    adjustments: [],
+    ...overrides,
+  };
+}
+
+describe("effectivePaymentAmount", () => {
+  it("is just the amount with no adjustments", () => {
+    expect(effectivePaymentAmount(payment())).toBe(50000);
+  });
+
+  it("adds every adjustment's signed delta", () => {
+    const p = payment({
+      adjustments: [
+        { amountMillimes: -10000, createdAt: new Date("2026-06-15") },
+        { amountMillimes: 2000, createdAt: new Date("2026-06-20") },
+      ],
+    });
+    expect(effectivePaymentAmount(p)).toBe(42000);
+  });
+
+  it("a full void reduces the effective amount to exactly zero", () => {
+    const p = payment({
+      amountMillimes: 50000,
+      adjustments: [{ amountMillimes: -50000, createdAt: new Date("2026-06-15") }],
+    });
+    expect(effectivePaymentAmount(p)).toBe(0);
+  });
+});
+
+describe("outstandingBalance", () => {
+  it("plan price minus a single full payment is zero", () => {
+    expect(outstandingBalance(50000, [payment({ amountMillimes: 50000 })])).toBe(0);
+  });
+
+  it("partial/installment payments sum toward the balance", () => {
+    const payments = [
+      payment({ amountMillimes: 20000 }),
+      payment({ amountMillimes: 15000 }),
+    ];
+    expect(outstandingBalance(50000, payments)).toBe(15000);
+  });
+
+  it("a voided payment leaves the full plan price outstanding again", () => {
+    const voided = payment({
+      amountMillimes: 50000,
+      adjustments: [{ amountMillimes: -50000, createdAt: new Date("2026-06-15") }],
+    });
+    expect(outstandingBalance(50000, [voided])).toBe(50000);
+  });
+
+  it("uses the passed-in (snapshotted) plan price, never a live plan price — the caller is responsible for passing the snapshot", () => {
+    // This test documents the contract: outstandingBalance has no way to
+    // read a "current" plan price at all, by construction — it only ever
+    // sees whatever number the caller supplies, which must be
+    // membership.priceMillimesSnapshot (product-spec.md §18).
+    expect(outstandingBalance(99999, [payment({ amountMillimes: 50000 })])).toBe(49999);
+  });
+});
+
+describe("revenueForPeriod", () => {
+  const march = { start: new Date("2026-03-01"), end: new Date("2026-03-31") };
+  const april = { start: new Date("2026-04-01"), end: new Date("2026-04-30") };
+
+  it("a March payment counts toward March revenue", () => {
+    const payments = [payment({ amountMillimes: 100, paidAt: new Date("2026-03-15") })];
+    expect(revenueForPeriod(payments, march.start, march.end)).toBe(100);
+    expect(revenueForPeriod(payments, april.start, april.end)).toBe(0);
+  });
+
+  it("an April adjustment on a March payment counts toward April revenue, not March (recorded-period attribution)", () => {
+    const payments = [
+      payment({
+        amountMillimes: 100,
+        paidAt: new Date("2026-03-15"),
+        adjustments: [{ amountMillimes: -20, createdAt: new Date("2026-04-05") }],
+      }),
+    ];
+    expect(revenueForPeriod(payments, march.start, march.end)).toBe(100);
+    expect(revenueForPeriod(payments, april.start, april.end)).toBe(-20);
+  });
+
+  it("does not retroactively rewrite the original payment's period when queried again later", () => {
+    const payments = [
+      payment({
+        amountMillimes: 100,
+        paidAt: new Date("2026-03-15"),
+        adjustments: [{ amountMillimes: -20, createdAt: new Date("2026-04-05") }],
+      }),
+    ];
+    // Querying March revenue after the April adjustment exists still
+    // returns the original 100 — the adjustment never touches March.
+    expect(revenueForPeriod(payments, march.start, march.end)).toBe(100);
+  });
+
+  it("sums multiple payments and adjustments within the same period", () => {
+    const payments = [
+      payment({ amountMillimes: 100, paidAt: new Date("2026-03-05") }),
+      payment({
+        amountMillimes: 200,
+        paidAt: new Date("2026-03-10"),
+        adjustments: [{ amountMillimes: -50, createdAt: new Date("2026-03-20") }],
+      }),
+    ];
+    expect(revenueForPeriod(payments, march.start, march.end)).toBe(250);
   });
 });

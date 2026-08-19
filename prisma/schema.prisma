@@ -38,11 +38,13 @@ model Gym {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
 
-  memberships       GymMembership[]
-  members           Member[]
-  membershipPlans   MembershipPlan[]
-  memberMemberships Membership[]
-  membershipFreezes MembershipFreeze[]
+  memberships        GymMembership[]
+  members            Member[]
+  membershipPlans    MembershipPlan[]
+  memberMemberships  Membership[]
+  membershipFreezes  MembershipFreeze[]
+  payments           Payment[]
+  paymentAdjustments PaymentAdjustment[]
 
   @@map("gyms")
 }
@@ -57,7 +59,9 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
-  memberships GymMembership[]
+  memberships         GymMembership[]
+  paymentsRecorded    Payment[]           @relation("PaymentsRecorded")
+  adjustmentsRecorded PaymentAdjustment[] @relation("PaymentAdjustmentsRecorded")
 
   @@map("users")
 }
@@ -176,10 +180,11 @@ model Membership {
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at")
 
-  gym     Gym                @relation(fields: [gymId], references: [id], onDelete: Restrict)
-  member  Member             @relation(fields: [memberId], references: [id], onDelete: Restrict)
-  plan    MembershipPlan     @relation(fields: [planId], references: [id], onDelete: Restrict)
-  freezes MembershipFreeze[]
+  gym      Gym                @relation(fields: [gymId], references: [id], onDelete: Restrict)
+  member   Member             @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  plan     MembershipPlan     @relation(fields: [planId], references: [id], onDelete: Restrict)
+  freezes  MembershipFreeze[]
+  payments Payment[]
 
   @@index([gymId])
   @@index([memberId])
@@ -205,4 +210,56 @@ model MembershipFreeze {
   @@index([gymId])
   @@index([membershipId])
   @@map("membership_freezes")
+}
+
+// Phase 5: append-only (product-spec.md §13 Rule 11, architecture.md §5.7).
+// Deliberately no `updatedAt` — this row has no update lifecycle at all
+// (see the RLS migration: app_user gets SELECT+INSERT only, no UPDATE/
+// DELETE grant, so mutation is impossible at the database layer, not just
+// absent from the service layer). Corrections are PaymentAdjustment rows,
+// never edits to this row. Same no-Platform-Admin-bypass rule as every
+// other business table since Phase 3.
+model Payment {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gymId          String   @map("gym_id") @db.Uuid
+  membershipId   String   @map("membership_id") @db.Uuid
+  amountMillimes Int      @map("amount_millimes")
+  method         String
+  paidAt         DateTime @map("paid_at")
+  // Audit trail (product-spec.md §11.4/§13 Rule 11): who recorded it, and
+  // createdAt (below) is when.
+  recordedByUserId String @map("recorded_by_user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  gym         Gym                 @relation(fields: [gymId], references: [id], onDelete: Restrict)
+  membership  Membership          @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  recordedBy  User                @relation("PaymentsRecorded", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+  adjustments PaymentAdjustment[]
+
+  @@index([gymId])
+  @@index([membershipId])
+  @@map("payments")
+}
+
+// One row per correction (product-spec.md §13 Rule 11) — `amountMillimes`
+// is a signed delta against the original payment's effective amount, never
+// a replacement value; a full void is `-` the payment's current effective
+// amount. Same append-only design as Payment: no `updatedAt`, no
+// UPDATE/DELETE grant.
+model PaymentAdjustment {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gymId          String  @map("gym_id") @db.Uuid
+  paymentId      String  @map("payment_id") @db.Uuid
+  amountMillimes Int     @map("amount_millimes")
+  reason         String?
+  recordedByUserId String @map("recorded_by_user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  gym        Gym     @relation(fields: [gymId], references: [id], onDelete: Restrict)
+  payment    Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  recordedBy User    @relation("PaymentAdjustmentsRecorded", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([gymId])
+  @@index([paymentId])
+  @@map("payment_adjustments")
 }

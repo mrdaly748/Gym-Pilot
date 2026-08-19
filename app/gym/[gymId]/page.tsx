@@ -17,7 +17,7 @@ export default async function GymHomePage({
     <main className="p-8">
       <h1 className="text-xl font-semibold">Gym {gymId}</h1>
       <p className="text-sm text-gray-600">
-        Payments, attendance, trainers, and expenses arrive in later phases.
+        Attendance, trainers, and expenses arrive in later phases.
       </p>
       <Link
         href={`/gym/${gymId}/members`}
@@ -30,6 +30,12 @@ export default async function GymHomePage({
         className="mt-4 block text-sm underline"
       >
         Memberships
+      </Link>
+      <Link
+        href={`/gym/${gymId}/payments`}
+        className="mt-4 block text-sm underline"
+      >
+        Payments
       </Link>
       {session.role === "GYM_ADMIN" && (
         <>

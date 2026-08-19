@@ -206,7 +206,7 @@ export function getAppUserPool(): Pool {
 
 export async function resetTestData(owner: Pool): Promise<void> {
   await owner.query(
-    "TRUNCATE membership_freezes, memberships, members, membership_plans, gym_memberships, gyms, users RESTART IDENTITY CASCADE",
+    "TRUNCATE payment_adjustments, payments, membership_freezes, memberships, members, membership_plans, gym_memberships, gyms, users RESTART IDENTITY CASCADE",
   );
 }
 
@@ -364,6 +364,54 @@ export async function seedFreeze(
      VALUES ($1, $2, $3, $4)
      RETURNING id`,
     [args.gymId, args.membershipId, args.frozenAt, args.resumedAt ?? null],
+  );
+  return result.rows[0];
+}
+
+export type SeededPayment = { id: string };
+export async function seedPayment(
+  owner: Pool,
+  args: {
+    gymId: string;
+    membershipId: string;
+    amountMillimes: number;
+    method?: string;
+    paidAt?: Date;
+    recordedByUserId: string;
+  },
+): Promise<SeededPayment> {
+  const result = await owner.query<SeededPayment>(
+    `INSERT INTO payments (gym_id, membership_id, amount_millimes, method, paid_at, recorded_by_user_id)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id`,
+    [
+      args.gymId,
+      args.membershipId,
+      args.amountMillimes,
+      args.method ?? "cash",
+      args.paidAt ?? new Date(),
+      args.recordedByUserId,
+    ],
+  );
+  return result.rows[0];
+}
+
+export type SeededPaymentAdjustment = { id: string };
+export async function seedPaymentAdjustment(
+  owner: Pool,
+  args: {
+    gymId: string;
+    paymentId: string;
+    amountMillimes: number;
+    reason?: string;
+    recordedByUserId: string;
+  },
+): Promise<SeededPaymentAdjustment> {
+  const result = await owner.query<SeededPaymentAdjustment>(
+    `INSERT INTO payment_adjustments (gym_id, payment_id, amount_millimes, reason, recorded_by_user_id)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id`,
+    [args.gymId, args.paymentId, args.amountMillimes, args.reason ?? null, args.recordedByUserId],
   );
   return result.rows[0];
 }
