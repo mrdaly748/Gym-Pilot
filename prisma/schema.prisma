@@ -45,6 +45,7 @@ model Gym {
   membershipFreezes  MembershipFreeze[]
   payments           Payment[]
   paymentAdjustments PaymentAdjustment[]
+  attendanceCheckins AttendanceCheckin[]
 
   @@map("gyms")
 }
@@ -62,6 +63,7 @@ model User {
   memberships         GymMembership[]
   paymentsRecorded    Payment[]           @relation("PaymentsRecorded")
   adjustmentsRecorded PaymentAdjustment[] @relation("PaymentAdjustmentsRecorded")
+  attendanceCheckinsRecorded AttendanceCheckin[] @relation("AttendanceCheckinsRecorded")
 
   @@map("users")
 }
@@ -119,6 +121,7 @@ model Member {
 
   gym         Gym          @relation(fields: [gymId], references: [id], onDelete: Restrict)
   memberships Membership[]
+  attendanceCheckins AttendanceCheckin[]
 
   @@index([gymId])
   @@index([gymId, phoneNormalized])
@@ -262,4 +265,34 @@ model PaymentAdjustment {
   @@index([gymId])
   @@index([paymentId])
   @@map("payment_adjustments")
+}
+
+// Phase 6: attendance check-ins (product-spec.md §11.5, §13 Rule 10).
+// Deliberately targets Member, not Membership — attendance is conceptually
+// independent of membership/payment status (product-spec.md §18: a check-in
+// must be recorded even when the member's membership is expired/frozen/
+// cancelled/nonexistent; the current status is surfaced by the service
+// layer via metrics.ts's deriveMembershipStatus(), never blocking here).
+//
+// Unlike Payment/PaymentAdjustment, this is NOT append-only: Rule 11's
+// insert-only regime is scoped to payments/expenses only. A Gym-Admin-only
+// correction path (UPDATE/DELETE) exists — see the Phase 6 migration's
+// grants/RLS. `checkedInAt` is always server-stamped "now" (no backdating
+// in spec), so there's no separate business-date-vs-recorded-at pair like
+// Payment.paidAt/createdAt.
+model AttendanceCheckin {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gymId            String   @map("gym_id") @db.Uuid
+  memberId         String   @map("member_id") @db.Uuid
+  checkedInAt      DateTime @default(now()) @map("checked_in_at")
+  recordedByUserId String   @map("recorded_by_user_id") @db.Uuid
+
+  gym        Gym    @relation(fields: [gymId], references: [id], onDelete: Restrict)
+  member     Member @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  recordedBy User   @relation("AttendanceCheckinsRecorded", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([gymId])
+  @@index([memberId])
+  @@index([gymId, checkedInAt])
+  @@map("attendance_checkins")
 }

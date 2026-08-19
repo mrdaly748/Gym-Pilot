@@ -9,6 +9,9 @@ import {
   isNewMember,
   outstandingBalance,
   revenueForPeriod,
+  totalCheckins,
+  uniqueVisitors,
+  type CheckinForCalc,
   type MembershipForStatus,
   type PaymentForCalc,
 } from "@/lib/server/services/metrics";
@@ -289,5 +292,66 @@ describe("revenueForPeriod", () => {
       }),
     ];
     expect(revenueForPeriod(payments, march.start, march.end)).toBe(250);
+  });
+});
+
+describe("totalCheckins / uniqueVisitors", () => {
+  const march = { start: new Date("2026-03-01"), end: new Date("2026-03-31") };
+
+  function checkin(overrides: Partial<CheckinForCalc>): CheckinForCalc {
+    return {
+      memberId: "member-1",
+      checkedInAt: new Date("2026-03-15"),
+      ...overrides,
+    };
+  }
+
+  it("zero check-ins yields zero for both metrics", () => {
+    expect(totalCheckins([], march.start, march.end)).toBe(0);
+    expect(uniqueVisitors([], march.start, march.end)).toBe(0);
+  });
+
+  it("one check-in counts as 1 total and 1 unique visitor", () => {
+    const checkins = [checkin({ memberId: "member-1" })];
+    expect(totalCheckins(checkins, march.start, march.end)).toBe(1);
+    expect(uniqueVisitors(checkins, march.start, march.end)).toBe(1);
+  });
+
+  it("multiple check-ins by the same member: N total, 1 unique visitor", () => {
+    const checkins = [
+      checkin({ memberId: "member-1", checkedInAt: new Date("2026-03-05") }),
+      checkin({ memberId: "member-1", checkedInAt: new Date("2026-03-10") }),
+      checkin({ memberId: "member-1", checkedInAt: new Date("2026-03-20") }),
+    ];
+    expect(totalCheckins(checkins, march.start, march.end)).toBe(3);
+    expect(uniqueVisitors(checkins, march.start, march.end)).toBe(1);
+  });
+
+  it("distinct members each count once for unique visitors, but sum for total", () => {
+    const checkins = [
+      checkin({ memberId: "member-1" }),
+      checkin({ memberId: "member-2" }),
+      checkin({ memberId: "member-1" }),
+    ];
+    expect(totalCheckins(checkins, march.start, march.end)).toBe(3);
+    expect(uniqueVisitors(checkins, march.start, march.end)).toBe(2);
+  });
+
+  it("excludes check-ins outside the period", () => {
+    const checkins = [
+      checkin({ memberId: "member-1", checkedInAt: new Date("2026-02-28") }),
+      checkin({ memberId: "member-2", checkedInAt: new Date("2026-04-01") }),
+    ];
+    expect(totalCheckins(checkins, march.start, march.end)).toBe(0);
+    expect(uniqueVisitors(checkins, march.start, march.end)).toBe(0);
+  });
+
+  it("includes check-ins exactly on the period boundaries", () => {
+    const checkins = [
+      checkin({ memberId: "member-1", checkedInAt: march.start }),
+      checkin({ memberId: "member-2", checkedInAt: march.end }),
+    ];
+    expect(totalCheckins(checkins, march.start, march.end)).toBe(2);
+    expect(uniqueVisitors(checkins, march.start, march.end)).toBe(2);
   });
 });

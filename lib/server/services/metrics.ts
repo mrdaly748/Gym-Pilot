@@ -189,3 +189,41 @@ export function revenueForPeriod(
   }
   return total;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 6: attendance (product-spec.md §13 Rule 10)
+// ---------------------------------------------------------------------------
+
+export type CheckinForCalc = {
+  memberId: string;
+  checkedInAt: Date;
+};
+
+/** Rule 10a: total check-ins recorded within a period — every row counts. */
+export function totalCheckins(
+  checkins: CheckinForCalc[],
+  periodStart: Date,
+  periodEnd: Date,
+): number {
+  return checkins.filter((c) => isWithinPeriod(c.checkedInAt, periodStart, periodEnd))
+    .length;
+}
+
+/**
+ * Rule 10b: "unique visitors" — the count of distinct members who checked in
+ * at least once within a period. A member checking in multiple times in the
+ * same period is counted once here (contrast with totalCheckins, which
+ * counts every row).
+ */
+export function uniqueVisitors(
+  checkins: CheckinForCalc[],
+  periodStart: Date,
+  periodEnd: Date,
+): number {
+  const memberIds = new Set(
+    checkins
+      .filter((c) => isWithinPeriod(c.checkedInAt, periodStart, periodEnd))
+      .map((c) => c.memberId),
+  );
+  return memberIds.size;
+}

@@ -206,7 +206,7 @@ export function getAppUserPool(): Pool {
 
 export async function resetTestData(owner: Pool): Promise<void> {
   await owner.query(
-    "TRUNCATE payment_adjustments, payments, membership_freezes, memberships, members, membership_plans, gym_memberships, gyms, users RESTART IDENTITY CASCADE",
+    "TRUNCATE attendance_checkins, payment_adjustments, payments, membership_freezes, memberships, members, membership_plans, gym_memberships, gyms, users RESTART IDENTITY CASCADE",
   );
 }
 
@@ -412,6 +412,25 @@ export async function seedPaymentAdjustment(
      VALUES ($1, $2, $3, $4, $5)
      RETURNING id`,
     [args.gymId, args.paymentId, args.amountMillimes, args.reason ?? null, args.recordedByUserId],
+  );
+  return result.rows[0];
+}
+
+export type SeededCheckin = { id: string };
+export async function seedCheckin(
+  owner: Pool,
+  args: {
+    gymId: string;
+    memberId: string;
+    checkedInAt?: Date;
+    recordedByUserId: string;
+  },
+): Promise<SeededCheckin> {
+  const result = await owner.query<SeededCheckin>(
+    `INSERT INTO attendance_checkins (gym_id, member_id, checked_in_at, recorded_by_user_id)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id`,
+    [args.gymId, args.memberId, args.checkedInAt ?? new Date(), args.recordedByUserId],
   );
   return result.rows[0];
 }
