@@ -2,10 +2,12 @@ import "server-only";
 import { withTenant, type TenantContext } from "@/lib/server/db";
 import { NotFoundError, ValidationError } from "@/lib/server/errors";
 import {
+  activeMemberCount,
   addDays,
   deriveMembershipStatus,
   frozenDays,
   isActiveMember,
+  newMemberCount,
   type MembershipStatus,
 } from "@/lib/server/services/metrics";
 
@@ -316,4 +318,64 @@ export async function cancelMembership(
   if (result.count === 0) {
     throw new NotFoundError("Membership not found in this gym, or already cancelled.");
   }
+}
+
+export type ExpiringMembershipSummary = {
+  id: string;
+  memberId: string;
+  memberName: string;
+  endDate: Date;
+};
+
+export type MembershipDashboardSummary = {
+  activeMembers: number;
+  newMembers: number;
+  expiringSoon: ExpiringMembershipSummary[];
+};
+
+/**
+ * Phase 8 dashboard composition (product-spec.md §11.8, §13 Rules 1, 4):
+ * active-member count, new-member count for the period, and the list of
+ * memberships currently EXPIRING_SOON — both Gym Admin (count) and Gym
+ * Staff (list only) need the expiring list, per spec. Composes the
+ * existing canonical functions (deriveMembershipStatus, activeMemberCount,
+ * newMemberCount) — no second status/counting implementation.
+ */
+export async function gymMembershipDashboardSummary(
+  context: TenantContext,
+  periodStart: Date,
+  periodEnd: Date,
+): Promise<MembershipDashboardSummary> {
+  const now = new Date();
+
+  return withTenant(context, async (tx) => {
+    const memberships = await tx.membership.findMany({
+      where: { gymId: context.gymId },
+      select: MEMBERSHIP_SELECT,
+    });
+
+    const expiringSoon = memberships
+      .filter((m) => deriveMembershipStatus(m, now) === "EXPIRING_SOON")
+      .map((m) => ({
+        id: m.id,
+        memberId: m.memberId,
+        memberName: m.member.name,
+        endDate: m.endDate,
+      }));
+
+    const members = await tx.member.findMany({
+      where: { gymId: context.gymId },
+      select: { joinDate: true },
+    });
+
+    return {
+      activeMembers: activeMemberCount(memberships, now),
+      newMembers: newMemberCount(
+        members.map((m) => m.joinDate),
+        periodStart,
+        periodEnd,
+      ),
+      expiringSoon,
+    };
+  });
 }

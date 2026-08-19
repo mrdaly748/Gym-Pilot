@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  activeMemberCount,
   addDays,
   deriveMembershipStatus,
   effectivePaymentAmount,
+  expensesForPeriod,
   frozenDays,
   isActiveMember,
   isCurrentlyFrozen,
   isNewMember,
   effectiveExpenseAmount,
+  newMemberCount,
   outstandingBalance,
   revenueForPeriod,
   totalCheckins,
@@ -362,6 +365,7 @@ describe("effectiveExpenseAmount", () => {
   function expense(overrides: Partial<ExpenseForCalc> = {}): ExpenseForCalc {
     return {
       amountMillimes: 50000,
+      expenseDate: new Date("2026-03-15"),
       adjustments: [],
       ...overrides,
     };
@@ -373,7 +377,10 @@ describe("effectiveExpenseAmount", () => {
 
   it("adds every adjustment's signed delta", () => {
     const e = expense({
-      adjustments: [{ amountMillimes: -10000 }, { amountMillimes: 2000 }],
+      adjustments: [
+        { amountMillimes: -10000, createdAt: new Date("2026-03-20") },
+        { amountMillimes: 2000, createdAt: new Date("2026-03-21") },
+      ],
     });
     expect(effectiveExpenseAmount(e)).toBe(42000);
   });
@@ -381,8 +388,117 @@ describe("effectiveExpenseAmount", () => {
   it("a full void reduces the effective amount to exactly zero", () => {
     const e = expense({
       amountMillimes: 50000,
-      adjustments: [{ amountMillimes: -50000 }],
+      adjustments: [{ amountMillimes: -50000, createdAt: new Date("2026-03-20") }],
     });
     expect(effectiveExpenseAmount(e)).toBe(0);
+  });
+});
+
+describe("expensesForPeriod", () => {
+  const march = { start: new Date("2026-03-01"), end: new Date("2026-03-31") };
+
+  function expense(overrides: Partial<ExpenseForCalc> = {}): ExpenseForCalc {
+    return {
+      amountMillimes: 100,
+      expenseDate: new Date("2026-03-15"),
+      adjustments: [],
+      ...overrides,
+    };
+  }
+
+  it("an expense counts toward the period of its expenseDate", () => {
+    const expenses = [expense({ amountMillimes: 100, expenseDate: new Date("2026-03-15") })];
+    expect(expensesForPeriod(expenses, march.start, march.end)).toBe(100);
+
+    const april = { start: new Date("2026-04-01"), end: new Date("2026-04-30") };
+    expect(expensesForPeriod(expenses, april.start, april.end)).toBe(0);
+  });
+
+  it("a later adjustment counts toward its own period, not the original expense's period", () => {
+    const expenses = [
+      expense({
+        amountMillimes: 100,
+        expenseDate: new Date("2026-03-15"),
+        adjustments: [{ amountMillimes: -20, createdAt: new Date("2026-04-05") }],
+      }),
+    ];
+    expect(expensesForPeriod(expenses, march.start, march.end)).toBe(100);
+
+    const april = { start: new Date("2026-04-01"), end: new Date("2026-04-30") };
+    expect(expensesForPeriod(expenses, april.start, april.end)).toBe(-20);
+  });
+
+  it("excludes expenses and adjustments outside the period", () => {
+    const expenses = [
+      expense({ expenseDate: new Date("2026-02-28") }),
+      expense({ expenseDate: new Date("2026-04-01") }),
+    ];
+    expect(expensesForPeriod(expenses, march.start, march.end)).toBe(0);
+  });
+
+  it("includes expenseDate exactly on the period boundaries", () => {
+    const expenses = [
+      expense({ amountMillimes: 1, expenseDate: march.start }),
+      expense({ amountMillimes: 2, expenseDate: march.end }),
+    ];
+    expect(expensesForPeriod(expenses, march.start, march.end)).toBe(3);
+  });
+
+  it("sums multiple expenses and adjustments within the same period", () => {
+    const expenses = [
+      expense({ amountMillimes: 100, expenseDate: new Date("2026-03-05") }),
+      expense({
+        amountMillimes: 200,
+        expenseDate: new Date("2026-03-10"),
+        adjustments: [{ amountMillimes: -50, createdAt: new Date("2026-03-20") }],
+      }),
+    ];
+    expect(expensesForPeriod(expenses, march.start, march.end)).toBe(250);
+  });
+});
+
+describe("activeMemberCount", () => {
+  const NOW2 = new Date("2026-06-15T12:00:00Z");
+
+  it("zero memberships yields zero", () => {
+    expect(activeMemberCount([], NOW2)).toBe(0);
+  });
+
+  it("counts ACTIVE and EXPIRING_SOON, excludes EXPIRED/FROZEN/CANCELLED", () => {
+    const memberships: MembershipForStatus[] = [
+      membership({ startDate: new Date("2026-06-01"), endDate: new Date("2026-07-01") }), // ACTIVE
+      membership({ startDate: new Date("2026-05-01"), endDate: new Date("2026-06-16") }), // EXPIRING_SOON
+      membership({ startDate: new Date("2026-01-01"), endDate: new Date("2026-02-01") }), // EXPIRED
+      membership({
+        startDate: new Date("2026-06-01"),
+        endDate: new Date("2026-07-01"),
+        freezes: [{ frozenAt: new Date("2026-06-10"), resumedAt: null }],
+      }), // FROZEN
+      membership({
+        startDate: new Date("2026-06-01"),
+        endDate: new Date("2026-07-01"),
+        cancelledAt: new Date("2026-06-05"),
+      }), // CANCELLED
+    ];
+    expect(activeMemberCount(memberships, NOW2)).toBe(2);
+  });
+});
+
+describe("newMemberCount", () => {
+  const march = { start: new Date("2026-03-01"), end: new Date("2026-03-31") };
+
+  it("zero members yields zero", () => {
+    expect(newMemberCount([], march.start, march.end)).toBe(0);
+  });
+
+  it("counts only join dates within the period", () => {
+    const joinDates = [
+      new Date("2026-02-28"),
+      new Date("2026-03-01"),
+      new Date("2026-03-15"),
+      new Date("2026-03-31"),
+      new Date("2026-04-01"),
+    ];
+    expect(newMemberCount(joinDates, march.start, march.end)).toBe(3);
   });
 });

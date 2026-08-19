@@ -10,7 +10,12 @@ import {
   type SeededUser,
 } from "../helpers/testDb";
 import { prisma } from "@/lib/server/db";
-import { adjustExpense, listExpenses, recordExpense } from "@/lib/server/services/expenses";
+import {
+  adjustExpense,
+  gymExpensesForPeriod,
+  listExpenses,
+  recordExpense,
+} from "@/lib/server/services/expenses";
 import { NotFoundError, ValidationError } from "@/lib/server/errors";
 
 describe("Phase 7 expenses service", () => {
@@ -160,4 +165,86 @@ describe("Phase 7 expenses service", () => {
       expect(gymBExpenses).toHaveLength(0);
     });
   });
+
+  describe("Phase 8 — gymExpensesForPeriod, recorded-period attribution", () => {
+    it("an expense counts toward the period of its expenseDate", async () => {
+      await recordExpense(adminContext(), {
+        category: "rent",
+        amountMillimes: 10000,
+        expenseDate: new Date("2026-03-15"),
+      });
+      const march = await gymExpensesForPeriod(
+        adminContext(),
+        new Date("2026-03-01"),
+        new Date("2026-03-31"),
+      );
+      const april = await gymExpensesForPeriod(
+        adminContext(),
+        new Date("2026-04-01"),
+        new Date("2026-04-30"),
+      );
+      expect(march).toBe(10000);
+      expect(april).toBe(0);
+    });
+
+    it("a later adjustment counts toward its own period, and does not rewrite the original expense's period", async () => {
+      const { id: expenseId } = await recordExpense(adminContext(), {
+        category: "equipment",
+        amountMillimes: 10000,
+        expenseDate: new Date("2026-03-15"),
+      });
+      await withOwnerCreatedAt(owner, expenseId);
+
+      const march = await gymExpensesForPeriod(
+        adminContext(),
+        new Date("2026-03-01"),
+        new Date("2026-03-31"),
+      );
+      const april = await gymExpensesForPeriod(
+        adminContext(),
+        new Date("2026-04-01"),
+        new Date("2026-04-30"),
+      );
+      expect(march).toBe(10000);
+      expect(april).toBe(-2000);
+    });
+
+    it("a gym cannot see another gym's expenses in its period total", async () => {
+      await recordExpense(adminContext(), {
+        category: "rent",
+        amountMillimes: 10000,
+        expenseDate: new Date("2026-03-15"),
+      });
+      const adminB = await seedUser(owner, "admin-b@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+
+      const gymBTotal = await gymExpensesForPeriod(
+        { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" },
+        new Date("2026-03-01"),
+        new Date("2026-03-31"),
+      );
+      expect(gymBTotal).toBe(0);
+    });
+  });
 });
+
+/**
+ * Records an April adjustment (-2000) against the given expense directly
+ * via the owner pool, since adjustExpense() always stamps createdAt as
+ * "now" and this test needs a specific historical date to prove
+ * recorded-period attribution — same pattern as
+ * tests/integration/payments.test.ts's own withOwnerCreatedAt helper.
+ */
+async function withOwnerCreatedAt(owner: Pool, expenseId: string): Promise<void> {
+  const gymRow = await owner.query("SELECT gym_id FROM expenses WHERE id = $1", [expenseId]);
+  const gymId = gymRow.rows[0].gym_id;
+  const adminRow = await owner.query(
+    "SELECT recorded_by_user_id FROM expenses WHERE id = $1",
+    [expenseId],
+  );
+  const userId = adminRow.rows[0].recorded_by_user_id;
+  await owner.query(
+    "INSERT INTO expense_adjustments (gym_id, expense_id, amount_millimes, recorded_by_user_id, created_at) VALUES ($1, $2, -2000, $3, $4)",
+    [gymId, expenseId, userId, new Date("2026-04-05")],
+  );
+}

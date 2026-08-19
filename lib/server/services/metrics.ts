@@ -234,10 +234,16 @@ export function uniqueVisitors(
 
 export type ExpenseAdjustmentForCalc = {
   amountMillimes: number;
+  createdAt: Date;
 };
 
+// Phase 8: expenseDate is required (not optional) — every consumer of this
+// type (effectiveExpenseAmount, expensesForPeriod) is either indifferent to
+// it or needs it, so there is no partial-shape caller to accommodate. The
+// same is true of AdjustmentForCalc.createdAt above.
 export type ExpenseForCalc = {
   amountMillimes: number;
+  expenseDate: Date;
   adjustments: ExpenseAdjustmentForCalc[];
 };
 
@@ -255,4 +261,65 @@ export function effectiveExpenseAmount(expense: ExpenseForCalc): number {
     expense.amountMillimes +
     expense.adjustments.reduce((sum, a) => sum + a.amountMillimes, 0)
   );
+}
+
+// ---------------------------------------------------------------------------
+// Phase 8: dashboard aggregations (product-spec.md §11.8, §13 Rules 1, 4, 9,
+// 11) — genuinely new gym-level aggregations the Dashboard needs; Phase 7
+// deliberately left these out (no dashboard consumer existed yet).
+// ---------------------------------------------------------------------------
+
+/**
+ * The expense-side counterpart of revenueForPeriod(), applying the
+ * identical non-retroactive period-attribution rule (Rule 9's cash-basis
+ * logic, extended to Rule 11's expense/adjustment pair): an expense's
+ * amount counts toward the period containing its own expenseDate; an
+ * adjustment's delta counts toward the period containing its own
+ * createdAt, independently — a correction made in a later period never
+ * rewrites an earlier, already-closed period's reported total expenses.
+ */
+export function expensesForPeriod(
+  expenses: ExpenseForCalc[],
+  periodStart: Date,
+  periodEnd: Date,
+): number {
+  let total = 0;
+  for (const expense of expenses) {
+    if (isWithinPeriod(expense.expenseDate, periodStart, periodEnd)) {
+      total += expense.amountMillimes;
+    }
+    for (const adjustment of expense.adjustments) {
+      if (isWithinPeriod(adjustment.createdAt, periodStart, periodEnd)) {
+        total += adjustment.amountMillimes;
+      }
+    }
+  }
+  return total;
+}
+
+/**
+ * Rule 1: count of memberships currently active (ACTIVE or EXPIRING_SOON,
+ * per isActiveMember()) — the dashboard's "active members" figure. Reuses
+ * deriveMembershipStatus()/isActiveMember() directly rather than
+ * re-deriving what counts as "active."
+ */
+export function activeMemberCount(
+  memberships: MembershipForStatus[],
+  now: Date = new Date(),
+): number {
+  return memberships.filter((m) => isActiveMember(deriveMembershipStatus(m, now)))
+    .length;
+}
+
+/**
+ * Rule 4: count of members whose joinDate falls within the period — the
+ * dashboard's "new members" figure. Reuses isNewMember() directly.
+ */
+export function newMemberCount(
+  joinDates: Date[],
+  periodStart: Date,
+  periodEnd: Date,
+): number {
+  return joinDates.filter((joinDate) => isNewMember(joinDate, periodStart, periodEnd))
+    .length;
 }

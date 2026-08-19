@@ -6,6 +6,7 @@ import {
   seedGym,
   seedMember,
   seedMembership,
+  seedMembershipRecord,
   seedPlan,
   seedUser,
   type SeededGym,
@@ -18,6 +19,7 @@ import {
   assignMembership,
   cancelMembership,
   freezeMembership,
+  gymMembershipDashboardSummary,
   listMemberships,
   renewMembership,
   resumeMembership,
@@ -235,6 +237,117 @@ describe("Phase 4 memberships service", () => {
         role: "GYM_ADMIN",
       });
       expect(gymBMemberships).toHaveLength(0);
+    });
+  });
+
+  describe("Phase 8 — gymMembershipDashboardSummary", () => {
+    it("activeMembers counts ACTIVE/EXPIRING_SOON and excludes EXPIRED/CANCELLED", async () => {
+      // ACTIVE (assigned via the service — default plan duration, not near expiry).
+      await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id });
+
+      // EXPIRED — a second member, membership ended in the past.
+      const memberExpired = await seedMember(owner, {
+        gymId: gymA.id,
+        name: "Expired Member",
+        phone: "20111111",
+        phoneNormalized: "20111111",
+      });
+      await seedMembershipRecord(owner, {
+        gymId: gymA.id,
+        memberId: memberExpired.id,
+        planId: planA.id,
+        startDate: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
+        endDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+      });
+
+      // CANCELLED — a third member.
+      const memberCancelled = await seedMember(owner, {
+        gymId: gymA.id,
+        name: "Cancelled Member",
+        phone: "20222222",
+        phoneNormalized: "20222222",
+      });
+      const cancelledMembership = await seedMembershipRecord(owner, {
+        gymId: gymA.id,
+        memberId: memberCancelled.id,
+        planId: planA.id,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      });
+      await owner.query("UPDATE memberships SET cancelled_at = now() WHERE id = $1", [
+        cancelledMembership.id,
+      ]);
+
+      const summary = await gymMembershipDashboardSummary(
+        adminContext(),
+        new Date("2026-01-01"),
+        new Date("2026-12-31"),
+      );
+      expect(summary.activeMembers).toBe(1);
+    });
+
+    it("newMembers counts members whose joinDate falls within the period", async () => {
+      await seedMember(owner, {
+        gymId: gymA.id,
+        name: "March joiner",
+        phone: "20333333",
+        phoneNormalized: "20333333",
+        joinDate: new Date("2026-03-15"),
+      });
+      await seedMember(owner, {
+        gymId: gymA.id,
+        name: "April joiner",
+        phone: "20444444",
+        phoneNormalized: "20444444",
+        joinDate: new Date("2026-04-01"),
+      });
+      // memberA (from beforeEach) joins "now" by default — outside the March window.
+
+      const summary = await gymMembershipDashboardSummary(
+        adminContext(),
+        new Date("2026-03-01"),
+        new Date("2026-03-31"),
+      );
+      expect(summary.newMembers).toBe(1);
+    });
+
+    it("expiringSoon lists memberships within the default 7-day window", async () => {
+      const memberExpiring = await seedMember(owner, {
+        gymId: gymA.id,
+        name: "Expiring Member",
+        phone: "20555555",
+        phoneNormalized: "20555555",
+      });
+      await seedMembershipRecord(owner, {
+        gymId: gymA.id,
+        memberId: memberExpiring.id,
+        planId: planA.id,
+        startDate: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000),
+        endDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+      });
+
+      const summary = await gymMembershipDashboardSummary(
+        adminContext(),
+        new Date("2026-01-01"),
+        new Date("2026-12-31"),
+      );
+      expect(summary.expiringSoon).toHaveLength(1);
+      expect(summary.expiringSoon[0].memberName).toBe("Expiring Member");
+    });
+
+    it("a gym cannot see another gym's membership dashboard data", async () => {
+      await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id });
+      const adminB = await seedUser(owner, "admin-b@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+
+      const summary = await gymMembershipDashboardSummary(
+        { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" },
+        new Date("2026-01-01"),
+        new Date("2026-12-31"),
+      );
+      expect(summary.activeMembers).toBe(0);
+      expect(summary.newMembers).toBe(0);
+      expect(summary.expiringSoon).toHaveLength(0);
     });
   });
 });

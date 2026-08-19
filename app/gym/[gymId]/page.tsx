@@ -17,6 +17,12 @@ export default async function GymHomePage({
     <main className="p-8">
       <h1 className="text-xl font-semibold">Gym {gymId}</h1>
       <Link
+        href={`/gym/${gymId}/dashboard`}
+        className="mt-4 block text-sm underline"
+      >
+        Dashboard
+      </Link>
+      <Link
         href={`/gym/${gymId}/members`}
         className="mt-4 block text-sm underline"
       >

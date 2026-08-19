@@ -1,7 +1,11 @@
 import "server-only";
 import { withTenant, type TenantContext } from "@/lib/server/db";
 import { NotFoundError, ValidationError } from "@/lib/server/errors";
-import { effectiveExpenseAmount } from "@/lib/server/services/metrics";
+import {
+  effectiveExpenseAmount,
+  expensesForPeriod,
+  type ExpenseAdjustmentForCalc,
+} from "@/lib/server/services/metrics";
 
 /**
  * Gym-Admin-only expense recording (product-spec.md §11.7, §13 Rule 11) —
@@ -210,4 +214,37 @@ export async function adjustExpense(
       select: { id: true },
     });
   });
+}
+
+/**
+ * Rule 9/11: total expenses for a period, across every expense/adjustment
+ * in the gym — the direct expense-side counterpart of
+ * lib/server/services/payments.ts#gymRevenueForPeriod, same query shape
+ * and same composition-over-the-canonical-pure-function pattern (never a
+ * second, parallel calculation).
+ */
+export async function gymExpensesForPeriod(
+  context: TenantContext,
+  periodStart: Date,
+  periodEnd: Date,
+): Promise<number> {
+  const expenses = await withTenant(context, (tx) =>
+    tx.expense.findMany({
+      where: { gymId: context.gymId },
+      select: {
+        amountMillimes: true,
+        expenseDate: true,
+        adjustments: { select: { amountMillimes: true, createdAt: true } },
+      },
+    }),
+  );
+  return expensesForPeriod(
+    expenses as {
+      amountMillimes: number;
+      expenseDate: Date;
+      adjustments: ExpenseAdjustmentForCalc[];
+    }[],
+    periodStart,
+    periodEnd,
+  );
 }

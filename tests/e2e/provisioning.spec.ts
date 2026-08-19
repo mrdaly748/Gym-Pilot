@@ -235,6 +235,15 @@ test("Full provisioning flow: Gym Admin, Gym Staff, and gym suspension", async (
     //    the Gym-Admin-only "Manage staff" link being visible.
     await expect(page.getByRole("link", { name: "Manage staff" })).toBeVisible();
 
+    // 5b. Phase 8: Gym Admin's dashboard shows the full figure set,
+    // including the financial totals Gym Staff must never see (checked
+    // below in step 8b) — a real render, not a code-inspection claim.
+    await page.goto(`/gym/${gymId}/dashboard`);
+    await expect(page.getByText("Revenue")).toBeVisible();
+    await expect(page.getByText("Total expenses")).toBeVisible();
+    await expect(page.getByText("Outstanding payments")).toBeVisible();
+    await page.goto(`/gym/${gymId}`);
+
     // 6. Gym Admin creates Gym Staff.
     await page.goto(`/gym/${gymId}/staff`);
     await page.getByLabel("Staff email").fill(staffEmail);
@@ -260,6 +269,17 @@ test("Full provisioning flow: Gym Admin, Gym Staff, and gym suspension", async (
     ).toHaveCount(0);
     await page.goto(`/gym/${gymId}/staff`);
     await expect(page).toHaveURL(`/gym/${gymId}`);
+
+    // 8b. Phase 8: Gym Staff's dashboard renders (operational content is
+    // present) but structurally excludes every financial figure — proven
+    // by a real render of the same route Gym Admin used in step 5b, not
+    // merely a different route or hidden CSS.
+    await page.goto(`/gym/${gymId}/dashboard`);
+    await expect(page.getByText("Today's check-ins")).toBeVisible();
+    await expect(page.getByText("Revenue")).toHaveCount(0);
+    await expect(page.getByText("Total expenses")).toHaveCount(0);
+    await expect(page.getByText("Outstanding payments")).toHaveCount(0);
+    await page.goto(`/gym/${gymId}`);
 
     await logout(page);
 
