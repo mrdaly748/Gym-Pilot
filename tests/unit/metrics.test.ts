@@ -7,11 +7,13 @@ import {
   isActiveMember,
   isCurrentlyFrozen,
   isNewMember,
+  effectiveExpenseAmount,
   outstandingBalance,
   revenueForPeriod,
   totalCheckins,
   uniqueVisitors,
   type CheckinForCalc,
+  type ExpenseForCalc,
   type MembershipForStatus,
   type PaymentForCalc,
 } from "@/lib/server/services/metrics";
@@ -353,5 +355,34 @@ describe("totalCheckins / uniqueVisitors", () => {
     ];
     expect(totalCheckins(checkins, march.start, march.end)).toBe(2);
     expect(uniqueVisitors(checkins, march.start, march.end)).toBe(2);
+  });
+});
+
+describe("effectiveExpenseAmount", () => {
+  function expense(overrides: Partial<ExpenseForCalc> = {}): ExpenseForCalc {
+    return {
+      amountMillimes: 50000,
+      adjustments: [],
+      ...overrides,
+    };
+  }
+
+  it("is just the amount with no adjustments", () => {
+    expect(effectiveExpenseAmount(expense())).toBe(50000);
+  });
+
+  it("adds every adjustment's signed delta", () => {
+    const e = expense({
+      adjustments: [{ amountMillimes: -10000 }, { amountMillimes: 2000 }],
+    });
+    expect(effectiveExpenseAmount(e)).toBe(42000);
+  });
+
+  it("a full void reduces the effective amount to exactly zero", () => {
+    const e = expense({
+      amountMillimes: 50000,
+      adjustments: [{ amountMillimes: -50000 }],
+    });
+    expect(effectiveExpenseAmount(e)).toBe(0);
   });
 });

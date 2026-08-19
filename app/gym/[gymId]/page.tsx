@@ -16,9 +16,6 @@ export default async function GymHomePage({
   return (
     <main className="p-8">
       <h1 className="text-xl font-semibold">Gym {gymId}</h1>
-      <p className="text-sm text-gray-600">
-        Trainers and expenses arrive in later phases.
-      </p>
       <Link
         href={`/gym/${gymId}/members`}
         className="mt-4 block text-sm underline"
@@ -56,6 +53,18 @@ export default async function GymHomePage({
             className="mt-4 block text-sm underline"
           >
             Manage staff
+          </Link>
+          <Link
+            href={`/gym/${gymId}/trainers`}
+            className="mt-4 block text-sm underline"
+          >
+            Trainers
+          </Link>
+          <Link
+            href={`/gym/${gymId}/expenses`}
+            className="mt-4 block text-sm underline"
+          >
+            Expenses
           </Link>
         </>
       )}

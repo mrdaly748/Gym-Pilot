@@ -46,6 +46,10 @@ model Gym {
   payments           Payment[]
   paymentAdjustments PaymentAdjustment[]
   attendanceCheckins AttendanceCheckin[]
+  trainers           Trainer[]
+  trainerMemberLinks TrainerMemberLink[]
+  expenses           Expense[]
+  expenseAdjustments ExpenseAdjustment[]
 
   @@map("gyms")
 }
@@ -64,6 +68,8 @@ model User {
   paymentsRecorded    Payment[]           @relation("PaymentsRecorded")
   adjustmentsRecorded PaymentAdjustment[] @relation("PaymentAdjustmentsRecorded")
   attendanceCheckinsRecorded AttendanceCheckin[] @relation("AttendanceCheckinsRecorded")
+  expensesRecorded           Expense[]           @relation("ExpensesRecorded")
+  expenseAdjustmentsRecorded ExpenseAdjustment[] @relation("ExpenseAdjustmentsRecorded")
 
   @@map("users")
 }
@@ -122,6 +128,7 @@ model Member {
   gym         Gym          @relation(fields: [gymId], references: [id], onDelete: Restrict)
   memberships Membership[]
   attendanceCheckins AttendanceCheckin[]
+  trainerLinks       TrainerMemberLink[]
 
   @@index([gymId])
   @@index([gymId, phoneNormalized])
@@ -295,4 +302,110 @@ model AttendanceCheckin {
   @@index([memberId])
   @@index([gymId, checkedInAt])
   @@map("attendance_checkins")
+}
+
+// Phase 7: trainer directory (product-spec.md §11.6). Gym-Admin-only at
+// every access level (SELECT/INSERT/UPDATE), not merely UI-hidden — the
+// first fully Gym-Admin-only table in the project; Gym Staff has zero
+// access, unlike members/membership_plans where Staff at least gets SELECT.
+// Same archive-not-delete idiom as Member/MembershipPlan (product-spec.md
+// §13 Rule 12): archivedAt hides a trainer from new selections/assignments
+// while every existing TrainerMemberLink survives untouched, preserved for
+// historical reporting.
+model Trainer {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gymId        String    @map("gym_id") @db.Uuid
+  name         String
+  contactPhone String?   @map("contact_phone")
+  contactEmail String?   @map("contact_email")
+  specialty    String?
+  archivedAt   DateTime? @map("archived_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  gym   Gym                 @relation(fields: [gymId], references: [id], onDelete: Restrict)
+  links TrainerMemberLink[]
+
+  @@index([gymId])
+  @@map("trainers")
+}
+
+// Many-to-many trainer<->member association (product-spec.md §11.6: "one or
+// more members" per trainer; nothing in the spec restricts a member to a
+// single trainer, so this is a genuine join table, not a trainerId column
+// on Member). gymId is denormalized onto this row (not derived by joining
+// through Trainer/Member) so RLS can scope it directly — same reasoning as
+// Payment/AttendanceCheckin carrying gymId. The unique constraint on
+// (trainerId, memberId) prevents a duplicate link at the database layer,
+// not merely an application-level check.
+model TrainerMemberLink {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gymId     String   @map("gym_id") @db.Uuid
+  trainerId String   @map("trainer_id") @db.Uuid
+  memberId  String   @map("member_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  gym     Gym     @relation(fields: [gymId], references: [id], onDelete: Restrict)
+  trainer Trainer @relation(fields: [trainerId], references: [id], onDelete: Restrict)
+  member  Member  @relation(fields: [memberId], references: [id], onDelete: Restrict)
+
+  @@unique([trainerId, memberId])
+  @@index([gymId])
+  @@index([trainerId])
+  @@index([memberId])
+  @@map("trainer_member_links")
+}
+
+// Phase 7: append-only, exactly like Payment (product-spec.md §13 Rule 11
+// explicitly groups "payments and expenses" under the same insert-only,
+// adjustment-based correction regime — the informal "edit/archive" wording
+// in spec §11.7 is superseded by Rule 11's canonical, explicit rule; see
+// docs/decisions.md's Phase 7 entry). Deliberately no `updatedAt` — same
+// no-update-lifecycle design as Payment: app_user gets SELECT+INSERT only,
+// no UPDATE/DELETE grant. Corrections are ExpenseAdjustment rows, never
+// edits to this row. Gym-Admin-only at every access level (unlike Payment,
+// where Gym Staff can record/read) — Gym Staff has zero access to expense
+// data (product-spec.md §11.7: "Gym Staff do not record or view expenses").
+model Expense {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gymId            String   @map("gym_id") @db.Uuid
+  category         String
+  amountMillimes   Int      @map("amount_millimes")
+  expenseDate      DateTime @map("expense_date") @db.Date
+  note             String?
+  recordedByUserId String   @map("recorded_by_user_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  gym         Gym                 @relation(fields: [gymId], references: [id], onDelete: Restrict)
+  recordedBy  User                @relation("ExpensesRecorded", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+  adjustments ExpenseAdjustment[]
+
+  @@index([gymId])
+  @@index([gymId, expenseDate])
+  @@map("expenses")
+}
+
+// One row per correction (product-spec.md §13 Rule 11) — `amountMillimes`
+// is a signed delta against the original expense's effective amount, never
+// a replacement value; a full void is `-` the expense's current effective
+// amount. Same append-only design as PaymentAdjustment: no `updatedAt`, no
+// UPDATE/DELETE grant. Gym-Admin-only (both recording an expense and
+// creating an adjustment are Gym-Admin-only in Phase 7 — unlike Payments,
+// there is no "Staff can record, Admin can adjust" split here).
+model ExpenseAdjustment {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gymId            String   @map("gym_id") @db.Uuid
+  expenseId        String   @map("expense_id") @db.Uuid
+  amountMillimes   Int      @map("amount_millimes")
+  reason           String?
+  recordedByUserId String   @map("recorded_by_user_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  gym        Gym     @relation(fields: [gymId], references: [id], onDelete: Restrict)
+  expense    Expense @relation(fields: [expenseId], references: [id], onDelete: Restrict)
+  recordedBy User    @relation("ExpenseAdjustmentsRecorded", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([gymId])
+  @@index([expenseId])
+  @@map("expense_adjustments")
 }

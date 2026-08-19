@@ -206,7 +206,7 @@ export function getAppUserPool(): Pool {
 
 export async function resetTestData(owner: Pool): Promise<void> {
   await owner.query(
-    "TRUNCATE attendance_checkins, payment_adjustments, payments, membership_freezes, memberships, members, membership_plans, gym_memberships, gyms, users RESTART IDENTITY CASCADE",
+    "TRUNCATE expense_adjustments, expenses, trainer_member_links, trainers, attendance_checkins, payment_adjustments, payments, membership_freezes, memberships, members, membership_plans, gym_memberships, gyms, users RESTART IDENTITY CASCADE",
   );
 }
 
@@ -431,6 +431,96 @@ export async function seedCheckin(
      VALUES ($1, $2, $3, $4)
      RETURNING id`,
     [args.gymId, args.memberId, args.checkedInAt ?? new Date(), args.recordedByUserId],
+  );
+  return result.rows[0];
+}
+
+export type SeededTrainer = { id: string; name: string };
+export async function seedTrainer(
+  owner: Pool,
+  args: {
+    gymId: string;
+    name: string;
+    contactPhone?: string;
+    contactEmail?: string;
+    specialty?: string;
+    archivedAt?: Date;
+  },
+): Promise<SeededTrainer> {
+  const result = await owner.query<SeededTrainer>(
+    `INSERT INTO trainers (gym_id, name, contact_phone, contact_email, specialty, archived_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, name`,
+    [
+      args.gymId,
+      args.name,
+      args.contactPhone ?? null,
+      args.contactEmail ?? null,
+      args.specialty ?? null,
+      args.archivedAt ?? null,
+    ],
+  );
+  return result.rows[0];
+}
+
+export type SeededTrainerMemberLink = { id: string };
+export async function seedTrainerMemberLink(
+  owner: Pool,
+  args: { gymId: string; trainerId: string; memberId: string },
+): Promise<SeededTrainerMemberLink> {
+  const result = await owner.query<SeededTrainerMemberLink>(
+    `INSERT INTO trainer_member_links (gym_id, trainer_id, member_id)
+     VALUES ($1, $2, $3)
+     RETURNING id`,
+    [args.gymId, args.trainerId, args.memberId],
+  );
+  return result.rows[0];
+}
+
+export type SeededExpense = { id: string };
+export async function seedExpense(
+  owner: Pool,
+  args: {
+    gymId: string;
+    category?: string;
+    amountMillimes: number;
+    expenseDate?: Date;
+    note?: string;
+    recordedByUserId: string;
+  },
+): Promise<SeededExpense> {
+  const result = await owner.query<SeededExpense>(
+    `INSERT INTO expenses (gym_id, category, amount_millimes, expense_date, note, recorded_by_user_id)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id`,
+    [
+      args.gymId,
+      args.category ?? "rent",
+      args.amountMillimes,
+      args.expenseDate ?? new Date(),
+      args.note ?? null,
+      args.recordedByUserId,
+    ],
+  );
+  return result.rows[0];
+}
+
+export type SeededExpenseAdjustment = { id: string };
+export async function seedExpenseAdjustment(
+  owner: Pool,
+  args: {
+    gymId: string;
+    expenseId: string;
+    amountMillimes: number;
+    reason?: string;
+    recordedByUserId: string;
+  },
+): Promise<SeededExpenseAdjustment> {
+  const result = await owner.query<SeededExpenseAdjustment>(
+    `INSERT INTO expense_adjustments (gym_id, expense_id, amount_millimes, reason, recorded_by_user_id)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id`,
+    [args.gymId, args.expenseId, args.amountMillimes, args.reason ?? null, args.recordedByUserId],
   );
   return result.rows[0];
 }

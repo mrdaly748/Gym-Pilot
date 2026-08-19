@@ -227,3 +227,32 @@ export function uniqueVisitors(
   );
   return memberIds.size;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 7: expenses (product-spec.md §13 Rule 11)
+// ---------------------------------------------------------------------------
+
+export type ExpenseAdjustmentForCalc = {
+  amountMillimes: number;
+};
+
+export type ExpenseForCalc = {
+  amountMillimes: number;
+  adjustments: ExpenseAdjustmentForCalc[];
+};
+
+/**
+ * Mirrors effectivePaymentAmount()'s pattern exactly (Rule 11 groups
+ * payments and expenses under the same insert-only, adjustment-based
+ * correction regime). This is a per-record derivation the
+ * ExpenseAdjustment correction mechanism itself depends on — not a Phase 8
+ * dashboard aggregation like revenueForPeriod/totalCheckins/uniqueVisitors
+ * — computing it ad hoc in the service layer instead would be exactly the
+ * "second calculation" this file exists to prevent.
+ */
+export function effectiveExpenseAmount(expense: ExpenseForCalc): number {
+  return (
+    expense.amountMillimes +
+    expense.adjustments.reduce((sum, a) => sum + a.amountMillimes, 0)
+  );
+}
