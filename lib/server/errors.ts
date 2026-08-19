@@ -36,3 +36,22 @@ export class ValidationError extends Error {
     this.name = "ValidationError";
   }
 }
+
+/**
+ * Thrown when a member's normalized phone number matches an existing member
+ * in the same gym (including archived ones — product-spec.md §18's
+ * "returning member" edge case). Carries enough to let the caller surface
+ * the existing record ("view/reactivate?") instead of a generic validation
+ * message — see lib/server/services/members.ts.
+ */
+export class DuplicateMemberError extends Error {
+  existingMemberId: string;
+  existingMemberName: string;
+
+  constructor(existingMemberId: string, existingMemberName: string) {
+    super(`A member with this phone number already exists: ${existingMemberName}`);
+    this.name = "DuplicateMemberError";
+    this.existingMemberId = existingMemberId;
+    this.existingMemberName = existingMemberName;
+  }
+}

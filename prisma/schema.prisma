@@ -38,7 +38,9 @@ model Gym {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
 
-  memberships GymMembership[]
+  memberships     GymMembership[]
+  members         Member[]
+  membershipPlans MembershipPlan[]
 
   @@map("gyms")
 }
@@ -83,4 +85,56 @@ model GymMembership {
   @@index([userId])
   @@index([gymId])
   @@map("gym_memberships")
+}
+
+// Phase 3: business data, gym-scoped. Deliberately no Platform Admin RLS
+// bypass on this table (see the RLS migration) — Platform Admin has no
+// default access to gym operational data (docs/architecture.md §7).
+//
+// archivedAt is the Phase 3 record-level active/archived flag (same idiom
+// as GymMembership.disabledAt) — NOT the membership-derived canonical
+// status (active/expiring/expired/frozen/cancelled) from product-spec.md
+// §13 Rule 1, which is Phase 4 scope once Memberships exist.
+model Member {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gymId                 String    @map("gym_id") @db.Uuid
+  name                  String
+  phone                 String
+  // Digits-only form of `phone` (strip everything non-digit), used for
+  // deterministic duplicate detection — see lib/server/services/members.ts.
+  phoneNormalized       String    @map("phone_normalized")
+  joinDate              DateTime  @map("join_date") @db.Date
+  // Minimal, optional — no medical/health data (product-spec.md §17).
+  emergencyContactName  String?   @map("emergency_contact_name")
+  emergencyContactPhone String?   @map("emergency_contact_phone")
+  archivedAt            DateTime? @map("archived_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  gym Gym @relation(fields: [gymId], references: [id], onDelete: Restrict)
+
+  @@index([gymId])
+  @@index([gymId, phoneNormalized])
+  @@map("members")
+}
+
+// Phase 3: business data, gym-scoped. Same no-Platform-Admin-bypass rule as
+// Member (see the RLS migration).
+model MembershipPlan {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gymId         String    @map("gym_id") @db.Uuid
+  name          String
+  // Tunisian Dinar's smallest unit (1 TND = 1000 millimes) — integer, never
+  // a float, to avoid rounding issues outright. 0 is valid (trial/promo
+  // plans, product-spec.md §11.2).
+  priceMillimes Int       @map("price_millimes")
+  durationDays  Int       @map("duration_days")
+  archivedAt    DateTime? @map("archived_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  gym Gym @relation(fields: [gymId], references: [id], onDelete: Restrict)
+
+  @@index([gymId])
+  @@map("membership_plans")
 }

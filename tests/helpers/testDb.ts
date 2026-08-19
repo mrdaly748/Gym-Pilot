@@ -206,7 +206,7 @@ export function getAppUserPool(): Pool {
 
 export async function resetTestData(owner: Pool): Promise<void> {
   await owner.query(
-    "TRUNCATE gym_memberships, gyms, users RESTART IDENTITY CASCADE",
+    "TRUNCATE members, membership_plans, gym_memberships, gyms, users RESTART IDENTITY CASCADE",
   );
 }
 
@@ -250,6 +250,65 @@ export async function seedMembership(
   const result = await owner.query<SeededMembership>(
     "INSERT INTO gym_memberships (user_id, gym_id, role, disabled_at) VALUES ($1, $2, $3, $4) RETURNING id",
     [args.userId, args.gymId, args.role, args.disabledAt ?? null],
+  );
+  return result.rows[0];
+}
+
+export type SeededMember = { id: string; name: string; phoneNormalized: string };
+export async function seedMember(
+  owner: Pool,
+  args: {
+    gymId: string;
+    name: string;
+    phone: string;
+    phoneNormalized: string;
+    joinDate?: Date;
+    archivedAt?: Date;
+  },
+): Promise<SeededMember> {
+  const result = await owner.query<{
+    id: string;
+    name: string;
+    phone_normalized: string;
+  }>(
+    `INSERT INTO members (gym_id, name, phone, phone_normalized, join_date, archived_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, name, phone_normalized`,
+    [
+      args.gymId,
+      args.name,
+      args.phone,
+      args.phoneNormalized,
+      args.joinDate ?? new Date(),
+      args.archivedAt ?? null,
+    ],
+  );
+  const row = result.rows[0];
+  return { id: row.id, name: row.name, phoneNormalized: row.phone_normalized };
+}
+
+export type SeededPlan = { id: string; name: string };
+export async function seedPlan(
+  owner: Pool,
+  args: {
+    gymId: string;
+    name: string;
+    priceMillimes?: number;
+    durationDays?: number;
+    archivedAt?: Date;
+  },
+): Promise<SeededPlan> {
+  const result = await owner.query<SeededPlan>(
+    `INSERT INTO membership_plans (gym_id, name, price_millimes, duration_days, archived_at)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, name`,
+    [
+      args.gymId,
+      args.name,
+      args.priceMillimes ?? 50000,
+      args.durationDays ?? 30,
+      args.archivedAt ?? null,
+    ],
   );
   return result.rows[0];
 }

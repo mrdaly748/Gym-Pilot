@@ -47,6 +47,13 @@ GRANT USAGE ON SCHEMA public TO app_user;
 GRANT SELECT, INSERT, UPDATE ON public.gyms TO app_user;
 GRANT SELECT, INSERT, UPDATE ON public.users TO app_user;
 GRANT SELECT, INSERT, UPDATE ON public.gym_memberships TO app_user;
+-- Grants for tables added by later migrations (Phase 3+) live in those
+-- migrations themselves, not here — this script runs once, early, before
+-- any table that doesn't exist yet at bootstrap time (see
+-- docs/decisions.md — Phase 3 entry for why: this file must run before
+-- rls_core (which needs app_user to exist), but a later migration's own
+-- tables don't exist until after rls_core runs, so this file can never
+-- grant on them directly).
 
 GRANT USAGE ON TYPE public.gym_status TO app_user;
 GRANT USAGE ON TYPE public.membership_role TO app_user;

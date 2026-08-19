@@ -17,16 +17,30 @@ export default async function GymHomePage({
     <main className="p-8">
       <h1 className="text-xl font-semibold">Gym {gymId}</h1>
       <p className="text-sm text-gray-600">
-        Members, memberships, payments, attendance, trainers, and expenses
-        arrive in later phases.
+        Memberships, payments, attendance, trainers, and expenses arrive in
+        later phases.
       </p>
+      <Link
+        href={`/gym/${gymId}/members`}
+        className="mt-4 block text-sm underline"
+      >
+        Members
+      </Link>
       {session.role === "GYM_ADMIN" && (
-        <Link
-          href={`/gym/${gymId}/staff`}
-          className="mt-4 block text-sm underline"
-        >
-          Manage staff
-        </Link>
+        <>
+          <Link
+            href={`/gym/${gymId}/memberships/plans`}
+            className="mt-4 block text-sm underline"
+          >
+            Manage plans
+          </Link>
+          <Link
+            href={`/gym/${gymId}/staff`}
+            className="mt-4 block text-sm underline"
+          >
+            Manage staff
+          </Link>
+        </>
       )}
       <form action={logoutAction}>
         <button type="submit" className="mt-4 text-sm underline">
