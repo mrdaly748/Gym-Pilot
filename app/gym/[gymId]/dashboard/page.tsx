@@ -83,10 +83,6 @@ function formatMillimes(millimes: number): string {
   return (millimes / 1000).toFixed(3) + " TND";
 }
 
-function formatMillimesCompact(millimes: number): string {
-  return Math.round(millimes / 1000).toLocaleString() + " TND";
-}
-
 function formatDate(date: Date): string {
   return new Date(date).toLocaleDateString();
 }
@@ -153,7 +149,7 @@ export default async function DashboardPage({
             Check-ins — last {TREND_MONTHS} months
           </h2>
           <div className="mt-3">
-            <TrendAreaChart data={attendancePoints} valueFormatter={(v) => String(v)} />
+            <TrendAreaChart data={attendancePoints} format="count" />
           </div>
         </section>
 
@@ -268,7 +264,7 @@ export default async function DashboardPage({
           Revenue — last {TREND_MONTHS} months
         </h2>
         <div className="mt-3">
-          <TrendAreaChart data={revenuePoints} valueFormatter={(v) => formatMillimesCompact(v * 1000)} />
+          <TrendAreaChart data={revenuePoints} format="tnd" />
         </div>
       </section>
 

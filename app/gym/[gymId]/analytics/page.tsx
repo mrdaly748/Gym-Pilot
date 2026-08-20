@@ -47,10 +47,6 @@ function formatMillimes(millimes: number): string {
   return (millimes / 1000).toFixed(3) + " TND";
 }
 
-function formatMillimesCompact(millimes: number): string {
-  return Math.round(millimes / 1000).toLocaleString() + " TND";
-}
-
 function formatPercentChange(change: number | null): string {
   if (change === null) {
     return "New";
@@ -193,20 +189,16 @@ export default async function AnalyticsPage({
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <ChartPanel title="Revenue trend">
-          <TrendAreaChart data={revenuePoints} valueFormatter={(v) => formatMillimesCompact(v * 1000)} />
+          <TrendAreaChart data={revenuePoints} format="tnd" />
         </ChartPanel>
         <ChartPanel title="Expenses trend">
-          <TrendAreaChart
-            data={expensesPoints}
-            valueFormatter={(v) => formatMillimesCompact(v * 1000)}
-            color="var(--danger)"
-          />
+          <TrendAreaChart data={expensesPoints} format="tnd" color="var(--danger)" />
         </ChartPanel>
         <ChartPanel title="Membership growth (active members, month end)">
-          <TrendAreaChart data={membershipPoints} valueFormatter={(v) => String(v)} color="var(--accent2)" />
+          <TrendAreaChart data={membershipPoints} format="count" color="var(--accent2)" />
         </ChartPanel>
         <ChartPanel title="Attendance trend (total check-ins)">
-          <TrendAreaChart data={attendancePoints} valueFormatter={(v) => String(v)} color="var(--info)" />
+          <TrendAreaChart data={attendancePoints} format="count" color="var(--info)" />
         </ChartPanel>
       </div>
 
@@ -221,11 +213,7 @@ export default async function AnalyticsPage({
         ) : (
           <>
             <div className="mt-3 rounded-lg border border-border-subtle bg-surface-2 p-4">
-              <BarComparisonChart
-                data={planPoints}
-                valueFormatter={(v) => formatMillimesCompact(v * 1000)}
-                color="var(--accent-cyan)"
-              />
+              <BarComparisonChart data={planPoints} format="tnd" color="var(--accent-cyan)" />
             </div>
             <div className="mt-3">
               <Table>

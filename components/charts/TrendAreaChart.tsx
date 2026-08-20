@@ -1,6 +1,7 @@
 "use client";
 
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { formatChartValue, type ChartValueFormat } from "./formatters";
 
 export type TrendPoint = { label: string; value: number };
 
@@ -12,18 +13,24 @@ export type TrendPoint = { label: string; value: number };
  * decorative effects. `color` defaults to the brand accent; callers pass
  * a different semantic token only when the data itself has a different
  * meaning (e.g. attendance vs. revenue).
+ *
+ * `format` (not a formatter function) is deliberate: this component is
+ * rendered from Server Component pages (Dashboard/Analytics), and a
+ * function prop can't cross that Server → Client boundary — only
+ * serializable values can. Formatting itself lives in ./formatters.ts.
  */
 export function TrendAreaChart({
   data,
-  valueFormatter,
+  format,
   color = "var(--accent)",
   height = 220,
 }: {
   data: TrendPoint[];
-  valueFormatter: (value: number) => string;
+  format: ChartValueFormat;
   color?: string;
   height?: number;
 }) {
+  const valueFormatter = (value: number) => formatChartValue(value, format);
   const gradientId = `trend-fill-${color.replace(/[^a-zA-Z0-9]/g, "")}`;
 
   return (
