@@ -50,6 +50,11 @@ jobs:
           DATABASE_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
           NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
           NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder"
+          # Phase 9: @ai-sdk/anthropic's default export only reads this at
+          # call time, not at build/import time (verified locally — the
+          # build succeeds without it) — placeholder added anyway, for the
+          # same defensive reasoning as the other placeholders here.
+          ANTHROPIC_API_KEY: "placeholder"
 
   test-db:
     name: Isolation & integration tests (real Postgres)

@@ -78,6 +78,12 @@ export default async function GymHomePage({
           >
             Analytics
           </Link>
+          <Link
+            href={`/gym/${gymId}/assistant`}
+            className="mt-4 block text-sm underline"
+          >
+            Assistant
+          </Link>
         </>
       )}
       <form action={logoutAction}>

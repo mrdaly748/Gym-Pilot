@@ -50,6 +50,7 @@ model Gym {
   trainerMemberLinks TrainerMemberLink[]
   expenses           Expense[]
   expenseAdjustments ExpenseAdjustment[]
+  aiUsageCounters    AiUsageCounter[]
 
   @@map("gyms")
 }
@@ -408,4 +409,26 @@ model ExpenseAdjustment {
   @@index([gymId])
   @@index([expenseId])
   @@map("expense_adjustments")
+}
+
+// Phase 9: AI usage limiting (docs/architecture.md §6.7) — one row per
+// gym per calendar day, incremented on every AI request before the model
+// is invoked. Deliberately no reset job/cron/queue: a new day simply has
+// no row yet, so "reset" is free (product-spec.md's own no-scheduler
+// convention, same as membership status derivation, D8). Gym-Admin-only
+// (matches the AI assistant's own access scope, D9) — no Gym Staff
+// access, no Platform Admin bypass.
+model AiUsageCounter {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gymId     String   @map("gym_id") @db.Uuid
+  date      DateTime @db.Date
+  count     Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  gym Gym @relation(fields: [gymId], references: [id], onDelete: Restrict)
+
+  @@unique([gymId, date])
+  @@index([gymId])
+  @@map("ai_usage_counters")
 }

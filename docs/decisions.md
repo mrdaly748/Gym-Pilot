@@ -113,11 +113,11 @@ This is the running record of technical decisions: what was chosen, what alterna
 
 ## D9 — Gym Staff AI assistant access
 
-**Decision (for now)**: The AI assistant is Gym Admin-only in MVP; Gym Staff cannot access it. This matches `docs/product-spec.md` §15.5's stated default.
+**Decision**: The AI assistant is Gym Admin-only; Gym Staff does not have AI Assistant access. This matches `docs/product-spec.md` §15.5's stated default.
 
-**Why this default, not a real decision yet**: The product spec itself flagged this as inferred-but-unconfirmed (§15.5, §25 open question #3) — a direct consequence of Gym Staff's exclusion from sensitive financial analytics, but never explicitly decided in the Phase 0 product decisions. This architecture makes it a single role check on the `/api/ai` route and `assistant/` UI route, so reversing it is a small, low-risk change.
+**Why**: The product spec flagged this as inferred-but-unconfirmed (§15.5, §25 open question #3) — a direct consequence of Gym Staff's exclusion from sensitive financial analytics, but never explicitly decided in the Phase 0 product decisions. Confirmed during Phase 9 planning. This architecture makes it a single role check on the `/api/ai` route and `assistant/` UI route, so reversing it later is a small, low-risk change.
 
-**Status**: **Open.** Needs your explicit confirmation before Phase 9 (AI Assistant) begins, per `docs/implementation-plan.md`. Implementation will proceed with "Gym Admin only" unless you say otherwise before that phase starts.
+**Status**: **Confirmed.** Implemented in Phase 9: `requireRole("GYM_ADMIN")` on both `app/api/ai/route.ts` and `app/gym/[gymId]/assistant/page.tsx`, and RLS policies on `ai_usage_counters` are Gym Admin-only.
 
 ---
 

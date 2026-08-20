@@ -255,6 +255,16 @@ test("Full provisioning flow: Gym Admin, Gym Staff, and gym suspension", async (
     await expect(page.getByText(/Plan performance/)).toBeVisible();
     await page.goto(`/gym/${gymId}`);
 
+    // 5d. Phase 9: Gym Admin can reach /assistant and it renders (a
+    // structural check only — no message is sent, so this needs no real
+    // ANTHROPIC_API_KEY and makes no model call; checked again for Gym
+    // Staff's exclusion in step 8d).
+    await page.goto(`/gym/${gymId}/assistant`);
+    await expect(page).toHaveURL(`/gym/${gymId}/assistant`);
+    await expect(page.getByRole("heading", { name: "Assistant" })).toBeVisible();
+    await expect(page.getByPlaceholder("Ask a question about your gym...")).toBeVisible();
+    await page.goto(`/gym/${gymId}`);
+
     // 6. Gym Admin creates Gym Staff.
     await page.goto(`/gym/${gymId}/staff`);
     await page.getByLabel("Staff email").fill(staffEmail);
@@ -298,6 +308,13 @@ test("Full provisioning flow: Gym Admin, Gym Staff, and gym suspension", async (
     // authorization error, matching the approved redirect behavior and
     // the same pattern already proven for /staff in step 8.
     await page.goto(`/gym/${gymId}/analytics`);
+    await expect(page).toHaveURL(`/gym/${gymId}`);
+
+    // 8d. Phase 9: Gym Staff attempting /assistant directly is redirected
+    // straight back to the gym home page (D9: Gym-Admin-only) — same
+    // try/catch/redirect pattern already proven for /analytics and
+    // /staff, never rendered with an authorization error.
+    await page.goto(`/gym/${gymId}/assistant`);
     await expect(page).toHaveURL(`/gym/${gymId}`);
 
     await logout(page);
