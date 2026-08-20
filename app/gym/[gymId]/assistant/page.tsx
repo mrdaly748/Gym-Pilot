@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireGym, requireRole } from "@/lib/server/auth";
+import { PageHeader } from "@/components/ui/PageHeader";
 import Chat from "./Chat";
 
 /**
@@ -25,16 +25,13 @@ export default async function AssistantPage({
   }
 
   return (
-    <main className="p-8">
-      <Link href={`/gym/${gymId}`} className="text-sm underline">
-        &larr; Gym
-      </Link>
-      <h1 className="mt-2 text-xl font-semibold">Assistant</h1>
-      <p className="mt-1 text-sm text-gray-600">
-        Ask questions about your gym&rsquo;s own data. Answers are grounded
-        in your actual records — the assistant cannot create, edit, or
-        delete anything.
-      </p>
+    <main className="p-6 md:p-8">
+      <PageHeader
+        title="Assistant"
+        backHref={`/gym/${gymId}`}
+        backLabel="Gym"
+        description="Ask questions about your gym's own data. Answers are grounded in your actual records — the assistant cannot create, edit, or delete anything."
+      />
       <Chat />
     </main>
   );

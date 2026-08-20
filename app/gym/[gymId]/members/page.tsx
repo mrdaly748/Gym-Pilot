@@ -2,6 +2,14 @@ import Link from "next/link";
 import { requireGym, requireRole } from "@/lib/server/auth";
 import { listMembers } from "@/lib/server/services/members";
 import { archiveMemberAction, createMemberAction, reactivateMemberAction } from "./actions";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { FormSection } from "@/components/ui/FormSection";
+import { TextInput } from "@/components/ui/TextInput";
+import { Button } from "@/components/ui/Button";
+import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
+import { Badge } from "@/components/ui/Badge";
+import { Table, Thead, Th, Td, Tr, EmptyRow } from "@/components/ui/Table";
+import { Flash } from "@/components/ui/Flash";
 
 function formatDate(date: Date): string {
   return new Date(date).toLocaleDateString();
@@ -16,142 +24,108 @@ export default async function MembersPage({
   searchParams,
 }: {
   params: Promise<{ gymId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; success?: string }>;
 }) {
   const { gymId } = await params;
-  const { error } = await searchParams;
+  const { error, success } = await searchParams;
   const session = await requireGym(gymId);
   await requireRole("GYM_ADMIN", "GYM_STAFF");
 
   const members = await listMembers({ userId: session.userId, gymId, role: session.role });
 
   return (
-    <main className="p-8">
-      <Link href={`/gym/${gymId}`} className="text-sm underline">
-        &larr; Gym
-      </Link>
-      <h1 className="mt-2 text-xl font-semibold">Members</h1>
+    <main className="p-6 md:p-8">
+      <PageHeader title="Members" backHref={`/gym/${gymId}`} backLabel="Gym" />
 
-      <section className="mt-6 max-w-sm">
-        <h2 className="text-sm font-medium">Register a member</h2>
-        {error && (
-          <p className="mt-2 text-sm text-red-600" role="alert">
-            {error}
-          </p>
-        )}
-        <form action={createMemberAction} className="mt-2 flex flex-col gap-3">
+      <FormSection title="Register a member">
+        <form action={createMemberAction} className="flex flex-col gap-3">
           <input type="hidden" name="gymId" value={gymId} />
-          <label className="flex flex-col gap-1 text-sm">
-            Full name
-            <input
-              type="text"
-              name="name"
-              required
-              className="rounded border border-gray-300 px-3 py-2"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Phone
-            <input
-              type="tel"
-              name="phone"
-              required
-              className="rounded border border-gray-300 px-3 py-2"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Join date
-            <input
-              type="date"
-              name="joinDate"
-              required
-              defaultValue={new Date().toISOString().slice(0, 10)}
-              className="rounded border border-gray-300 px-3 py-2"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Emergency contact name (optional)
-            <input
-              type="text"
-              name="emergencyContactName"
-              className="rounded border border-gray-300 px-3 py-2"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Emergency contact phone (optional)
-            <input
-              type="tel"
-              name="emergencyContactPhone"
-              className="rounded border border-gray-300 px-3 py-2"
-            />
-          </label>
-          <button
-            type="submit"
-            className="rounded bg-gray-900 px-3 py-2 text-white"
-          >
+          <TextInput label="Full name" type="text" name="name" required />
+          <TextInput label="Phone" type="tel" name="phone" required />
+          <TextInput
+            label="Join date"
+            type="date"
+            name="joinDate"
+            required
+            defaultValue={new Date().toISOString().slice(0, 10)}
+          />
+          <TextInput
+            label="Emergency contact name (optional)"
+            type="text"
+            name="emergencyContactName"
+          />
+          <TextInput
+            label="Emergency contact phone (optional)"
+            type="tel"
+            name="emergencyContactPhone"
+          />
+          <Button type="submit" variant="primary">
             Register member
-          </button>
+          </Button>
         </form>
-      </section>
+      </FormSection>
 
       <section className="mt-8">
-        <h2 className="text-sm font-medium">All members</h2>
-        <table className="mt-2 w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-gray-300">
-              <th className="py-2 pr-4">Name</th>
-              <th className="py-2 pr-4">Phone</th>
-              <th className="py-2 pr-4">Join date</th>
-              <th className="py-2 pr-4">Status</th>
-              <th className="py-2">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {members.map((member) => (
-              <tr key={member.id} className="border-b border-gray-100">
-                <td className="py-2 pr-4">
-                  <Link
-                    href={`/gym/${gymId}/members/${member.id}/edit`}
-                    className="underline"
-                  >
-                    {member.name}
-                  </Link>
-                </td>
-                <td className="py-2 pr-4">{member.phone}</td>
-                <td className="py-2 pr-4">{formatDate(member.joinDate)}</td>
-                <td className="py-2 pr-4">
-                  {member.archivedAt ? "Archived" : "Active"}
-                </td>
-                <td className="py-2">
-                  {member.archivedAt ? (
-                    <form action={reactivateMemberAction}>
-                      <input type="hidden" name="gymId" value={gymId} />
-                      <input type="hidden" name="memberId" value={member.id} />
-                      <button type="submit" className="text-sm underline">
-                        Reactivate
-                      </button>
-                    </form>
-                  ) : (
-                    <form action={archiveMemberAction}>
-                      <input type="hidden" name="gymId" value={gymId} />
-                      <input type="hidden" name="memberId" value={member.id} />
-                      <button type="submit" className="text-sm underline">
-                        Archive
-                      </button>
-                    </form>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {members.length === 0 && (
+        <h2 className="text-xs font-semibold tracking-wide text-text-tertiary uppercase">
+          All members
+        </h2>
+        <div className="mt-3">
+          <Flash error={error} success={success} />
+          <Table>
+            <Thead>
               <tr>
-                <td colSpan={5} className="py-4 text-gray-500">
-                  No members yet.
-                </td>
+                <Th>Name</Th>
+                <Th>Phone</Th>
+                <Th>Join date</Th>
+                <Th>Status</Th>
+                <Th>Action</Th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </Thead>
+            <tbody>
+              {members.map((member) => (
+                <Tr key={member.id}>
+                  <Td>
+                    <Link
+                      href={`/gym/${gymId}/members/${member.id}/edit`}
+                      className="font-medium text-foreground hover:text-accent"
+                    >
+                      {member.name}
+                    </Link>
+                  </Td>
+                  <Td className="text-text-secondary">{member.phone}</Td>
+                  <Td className="text-text-secondary">{formatDate(member.joinDate)}</Td>
+                  <Td>
+                    <Badge status={member.archivedAt ? "archived" : "active"} />
+                  </Td>
+                  <Td>
+                    {member.archivedAt ? (
+                      <form action={reactivateMemberAction}>
+                        <input type="hidden" name="gymId" value={gymId} />
+                        <input type="hidden" name="memberId" value={member.id} />
+                        <Button type="submit" variant="ghost">
+                          Reactivate
+                        </Button>
+                      </form>
+                    ) : (
+                      <form action={archiveMemberAction}>
+                        <input type="hidden" name="gymId" value={gymId} />
+                        <input type="hidden" name="memberId" value={member.id} />
+                        <ConfirmSubmitButton
+                          confirmTitle="Archive this member?"
+                          confirmMessage={`${member.name} will be hidden from active lists. Their history is preserved and this can be undone.`}
+                          confirmLabel="Archive"
+                        >
+                          Archive
+                        </ConfirmSubmitButton>
+                      </form>
+                    )}
+                  </Td>
+                </Tr>
+              ))}
+              {members.length === 0 && <EmptyRow colSpan={5}>No members yet.</EmptyRow>}
+            </tbody>
+          </Table>
+        </div>
       </section>
     </main>
   );

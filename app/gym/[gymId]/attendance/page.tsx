@@ -1,11 +1,17 @@
-import Link from "next/link";
 import { requireGym, requireRole } from "@/lib/server/auth";
 import { listMembers } from "@/lib/server/services/members";
-import {
-  gymAttendanceMetrics,
-  listCheckins,
-} from "@/lib/server/services/attendance";
+import { gymAttendanceMetrics, listCheckins } from "@/lib/server/services/attendance";
 import { checkInAction, correctCheckinAction, deleteCheckinAction } from "./actions";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { FormSection } from "@/components/ui/FormSection";
+import { Select } from "@/components/ui/Select";
+import { Button } from "@/components/ui/Button";
+import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
+import { StatCard } from "@/components/ui/StatCard";
+import { Badge, type BadgeStatus } from "@/components/ui/Badge";
+import { Table, Thead, Th, Td, Tr, EmptyRow } from "@/components/ui/Table";
+import { Flash } from "@/components/ui/Flash";
+import { AttendanceIcon, MembersIcon } from "@/components/ui/icons";
 
 function formatDateTime(date: Date): string {
   return new Date(date).toLocaleString();
@@ -19,11 +25,18 @@ function endOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
 }
 
+const STATUS_BADGE: Record<string, BadgeStatus> = {
+  ACTIVE: "active",
+  EXPIRING_SOON: "expiring-soon",
+  EXPIRED: "expired",
+  FROZEN: "frozen",
+  CANCELLED: "cancelled",
+};
+
 /**
  * Gym Admin AND Gym Staff can check members in and view attendance history
  * and metrics (product-spec.md §11.5, §5.3) — attendance is not among the
- * figures §11.8 restricts to Gym Admin (that list is revenue/expenses/
- * outstanding-payment totals only), so unlike the Payments page there is no
+ * figures §11.8 restricts to Gym Admin, so unlike Payments there is no
  * role-conditional hiding of the period totals here. Correcting/deleting an
  * existing check-in is Gym-Admin-only, gated inline below.
  */
@@ -32,10 +45,10 @@ export default async function AttendancePage({
   searchParams,
 }: {
   params: Promise<{ gymId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; success?: string }>;
 }) {
   const { gymId } = await params;
-  const { error } = await searchParams;
+  const { error, success } = await searchParams;
   const session = await requireGym(gymId);
   await requireRole("GYM_ADMIN", "GYM_STAFF");
 
@@ -51,32 +64,31 @@ export default async function AttendancePage({
   ]);
 
   return (
-    <main className="p-8">
-      <Link href={`/gym/${gymId}`} className="text-sm underline">
-        &larr; Gym
-      </Link>
-      <h1 className="mt-2 text-xl font-semibold">Attendance</h1>
-      <p className="mt-1 text-sm text-gray-600">
-        This month: {metrics.totalCheckins} check-ins, {metrics.uniqueVisitors} unique visitors.
-      </p>
+    <main className="p-6 md:p-8">
+      <PageHeader title="Attendance" backHref={`/gym/${gymId}`} backLabel="Gym" />
 
-      <section className="mt-6 max-w-sm">
-        <h2 className="text-sm font-medium">Check a member in</h2>
-        {error && (
-          <p className="mt-2 text-sm text-red-600" role="alert">
-            {error}
-          </p>
-        )}
-        <form action={checkInAction} className="mt-2 flex flex-col gap-3">
-          <input type="hidden" name="gymId" value={gymId} />
-          <label className="flex flex-col gap-1 text-sm">
-            Member
-            <select
-              name="memberId"
-              required
-              className="rounded border border-gray-300 px-3 py-2"
-            >
-              <option value="">Select a member</option>
+      <div className="grid grid-cols-2 gap-4 sm:max-w-md">
+        <StatCard
+          label="Check-ins this month"
+          value={String(metrics.totalCheckins)}
+          icon={<AttendanceIcon className="h-4.5 w-4.5" />}
+          tone="accent"
+        />
+        <StatCard
+          label="Unique visitors"
+          value={String(metrics.uniqueVisitors)}
+          icon={<MembersIcon className="h-4.5 w-4.5" />}
+        />
+      </div>
+
+      <div className="mt-8">
+        <FormSection title="Check a member in" error={error}>
+          <form action={checkInAction} className="flex flex-col gap-3">
+            <input type="hidden" name="gymId" value={gymId} />
+            <Select label="Member" name="memberId" required defaultValue="">
+              <option value="" disabled>
+                Select a member
+              </option>
               {members
                 .filter((m) => !m.archivedAt)
                 .map((m) => (
@@ -84,89 +96,88 @@ export default async function AttendancePage({
                     {m.name}
                   </option>
                 ))}
-            </select>
-          </label>
-          <button
-            type="submit"
-            className="rounded bg-gray-900 px-3 py-2 text-white"
-          >
-            Check in
-          </button>
-        </form>
-      </section>
+            </Select>
+            <Button type="submit" variant="primary">
+              Check in
+            </Button>
+          </form>
+        </FormSection>
+      </div>
 
       <section className="mt-8">
-        <h2 className="text-sm font-medium">Recent check-ins</h2>
-        <table className="mt-2 w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-gray-300">
-              <th className="py-2 pr-4">Member</th>
-              <th className="py-2 pr-4">Membership status</th>
-              <th className="py-2 pr-4">Checked in</th>
-              <th className="py-2 pr-4">Recorded by</th>
-              <th className="py-2">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {checkins.map((c) => (
-              <tr key={c.id} className="border-b border-gray-100">
-                <td className="py-2 pr-4">{c.memberName}</td>
-                <td className="py-2 pr-4">{c.membershipStatus ?? "No membership"}</td>
-                <td className="py-2 pr-4">{formatDateTime(c.checkedInAt)}</td>
-                <td className="py-2 pr-4">{c.recordedByEmail}</td>
-                <td className="py-2">
-                  {session.role === "GYM_ADMIN" && (
-                    <div className="flex flex-wrap gap-2">
-                      <form action={deleteCheckinAction}>
-                        <input type="hidden" name="gymId" value={gymId} />
-                        <input type="hidden" name="checkinId" value={c.id} />
-                        <button type="submit" className="text-sm underline">
-                          Delete
-                        </button>
-                      </form>
-                      <details>
-                        <summary className="cursor-pointer text-sm underline">
-                          Correct member
-                        </summary>
-                        <form
-                          action={correctCheckinAction}
-                          className="mt-2 flex flex-col gap-2"
-                        >
+        <h2 className="text-xs font-semibold tracking-wide text-text-tertiary uppercase">
+          Recent check-ins
+        </h2>
+        <div className="mt-3">
+          {!error && <Flash success={success} />}
+          <Table>
+            <Thead>
+              <tr>
+                <Th>Member</Th>
+                <Th>Membership status</Th>
+                <Th>Checked in</Th>
+                <Th>Recorded by</Th>
+                <Th>Action</Th>
+              </tr>
+            </Thead>
+            <tbody>
+              {checkins.map((c) => (
+                <Tr key={c.id}>
+                  <Td className="font-medium">{c.memberName}</Td>
+                  <Td>
+                    {c.membershipStatus ? (
+                      <Badge status={STATUS_BADGE[c.membershipStatus] ?? "active"} />
+                    ) : (
+                      <span className="text-text-tertiary">No membership</span>
+                    )}
+                  </Td>
+                  <Td className="text-text-secondary">{formatDateTime(c.checkedInAt)}</Td>
+                  <Td className="text-text-secondary">{c.recordedByEmail}</Td>
+                  <Td>
+                    {session.role === "GYM_ADMIN" && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <form action={deleteCheckinAction}>
                           <input type="hidden" name="gymId" value={gymId} />
                           <input type="hidden" name="checkinId" value={c.id} />
-                          <select
-                            name="memberId"
-                            required
-                            className="rounded border border-gray-300 px-2 py-1 text-sm"
+                          <ConfirmSubmitButton
+                            confirmTitle="Delete this check-in?"
+                            confirmMessage="This removes the attendance record permanently. It does not affect the member's membership status."
+                            confirmLabel="Delete"
                           >
-                            {members.map((m) => (
-                              <option key={m.id} value={m.id}>
-                                {m.name}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            type="submit"
-                            className="rounded bg-gray-900 px-2 py-1 text-xs text-white"
-                          >
-                            Save correction
-                          </button>
+                            Delete
+                          </ConfirmSubmitButton>
                         </form>
-                      </details>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {checkins.length === 0 && (
-              <tr>
-                <td colSpan={5} className="py-4 text-gray-500">
-                  No check-ins yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                        <details>
+                          <summary className="cursor-pointer list-none rounded-lg px-3 py-2 text-sm text-text-secondary hover:bg-surface-3 hover:text-foreground">
+                            Correct member
+                          </summary>
+                          <form
+                            action={correctCheckinAction}
+                            className="mt-2 flex flex-col gap-2 rounded-lg border border-border-subtle bg-surface-1 p-3"
+                          >
+                            <input type="hidden" name="gymId" value={gymId} />
+                            <input type="hidden" name="checkinId" value={c.id} />
+                            <Select label="Member" name="memberId" required defaultValue="">
+                              {members.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.name}
+                                </option>
+                              ))}
+                            </Select>
+                            <Button type="submit" variant="primary" className="self-start">
+                              Save correction
+                            </Button>
+                          </form>
+                        </details>
+                      </div>
+                    )}
+                  </Td>
+                </Tr>
+              ))}
+              {checkins.length === 0 && <EmptyRow colSpan={5}>No check-ins yet.</EmptyRow>}
+            </tbody>
+          </Table>
+        </div>
       </section>
     </main>
   );

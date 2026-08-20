@@ -1,8 +1,11 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireGym, requireRole } from "@/lib/server/auth";
 import { getMember } from "@/lib/server/services/members";
 import { updateMemberAction } from "../../actions";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { TextInput } from "@/components/ui/TextInput";
+import { Button } from "@/components/ui/Button";
+import { Flash } from "@/components/ui/Flash";
 
 export default async function EditMemberPage({
   params,
@@ -25,78 +28,44 @@ export default async function EditMemberPage({
   }
 
   return (
-    <main className="p-8">
-      <Link href={`/gym/${gymId}/members`} className="text-sm underline">
-        &larr; Members
-      </Link>
-      <h1 className="mt-2 text-xl font-semibold">Edit {member.name}</h1>
+    <main className="p-6 md:p-8">
+      <PageHeader
+        title={`Edit ${member.name}`}
+        backHref={`/gym/${gymId}/members`}
+        backLabel="Members"
+      />
 
-      {error && (
-        <p className="mt-2 text-sm text-red-600" role="alert">
-          {error}
-        </p>
-      )}
-      <form
-        action={updateMemberAction}
-        className="mt-4 flex max-w-sm flex-col gap-3"
-      >
-        <input type="hidden" name="gymId" value={gymId} />
-        <input type="hidden" name="memberId" value={member.id} />
-        <label className="flex flex-col gap-1 text-sm">
-          Full name
-          <input
-            type="text"
-            name="name"
-            required
-            defaultValue={member.name}
-            className="rounded border border-gray-300 px-3 py-2"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Phone
-          <input
-            type="tel"
-            name="phone"
-            required
-            defaultValue={member.phone}
-            className="rounded border border-gray-300 px-3 py-2"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Join date
-          <input
+      <div className="max-w-sm">
+        <Flash error={error} />
+        <form action={updateMemberAction} className="flex flex-col gap-3">
+          <input type="hidden" name="gymId" value={gymId} />
+          <input type="hidden" name="memberId" value={member.id} />
+          <TextInput label="Full name" type="text" name="name" required defaultValue={member.name} />
+          <TextInput label="Phone" type="tel" name="phone" required defaultValue={member.phone} />
+          <TextInput
+            label="Join date"
             type="date"
             name="joinDate"
             required
             defaultValue={new Date(member.joinDate).toISOString().slice(0, 10)}
-            className="rounded border border-gray-300 px-3 py-2"
           />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Emergency contact name (optional)
-          <input
+          <TextInput
+            label="Emergency contact name (optional)"
             type="text"
             name="emergencyContactName"
             defaultValue={member.emergencyContactName ?? ""}
-            className="rounded border border-gray-300 px-3 py-2"
           />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Emergency contact phone (optional)
-          <input
+          <TextInput
+            label="Emergency contact phone (optional)"
             type="tel"
             name="emergencyContactPhone"
             defaultValue={member.emergencyContactPhone ?? ""}
-            className="rounded border border-gray-300 px-3 py-2"
           />
-        </label>
-        <button
-          type="submit"
-          className="rounded bg-gray-900 px-3 py-2 text-white"
-        >
-          Save changes
-        </button>
-      </form>
+          <Button type="submit" variant="primary">
+            Save changes
+          </Button>
+        </form>
+      </div>
     </main>
   );
 }

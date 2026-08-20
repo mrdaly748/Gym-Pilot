@@ -322,8 +322,14 @@ test("Full provisioning flow: Gym Admin, Gym Staff, and gym suspension", async (
     // 9. Platform Admin suspends the Gym.
     await login(page, platformAdminEmail!, platformAdminPassword!);
     await page.goto("/platform/gyms");
+    // Phase 9.5: Suspend is now a destructive action gated behind a native
+    // <dialog> confirmation (components/ui/ConfirmSubmitButton) — the row's
+    // "Suspend" button only opens the dialog; the dialog's own "Suspend"
+    // button (showModal() makes the rest of the page inert, so this is
+    // still an unambiguous single match) actually submits the form.
     const row = page.getByRole("row").filter({ hasText: gymName });
     await row.getByRole("button", { name: "Suspend" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Suspend" }).click();
     await expect(row.getByText("SUSPENDED")).toBeVisible();
 
     // /platform/gyms has no logout button of its own — only /platform does.

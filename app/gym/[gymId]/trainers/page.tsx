@@ -9,6 +9,15 @@ import {
   reactivateTrainerAction,
   unassignTrainerAction,
 } from "./actions";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { FormSection } from "@/components/ui/FormSection";
+import { TextInput } from "@/components/ui/TextInput";
+import { Select } from "@/components/ui/Select";
+import { Button } from "@/components/ui/Button";
+import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
+import { Badge } from "@/components/ui/Badge";
+import { Table, Thead, Th, Td, Tr, EmptyRow } from "@/components/ui/Table";
+import { Flash } from "@/components/ui/Flash";
 
 /**
  * Gym-Admin-only (product-spec.md §11.6) — app/gym/[gymId]/layout.tsx only
@@ -23,10 +32,10 @@ export default async function TrainersPage({
   searchParams,
 }: {
   params: Promise<{ gymId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; success?: string }>;
 }) {
   const { gymId } = await params;
-  const { error } = await searchParams;
+  const { error, success } = await searchParams;
   const session = await requireGym(gymId);
   await requireRole("GYM_ADMIN");
 
@@ -42,168 +51,137 @@ export default async function TrainersPage({
   );
 
   return (
-    <main className="p-8">
-      <Link href={`/gym/${gymId}`} className="text-sm underline">
-        &larr; Gym
-      </Link>
-      <h1 className="mt-2 text-xl font-semibold">Trainers</h1>
+    <main className="p-6 md:p-8">
+      <PageHeader title="Trainers" backHref={`/gym/${gymId}`} backLabel="Gym" />
 
-      <section className="mt-6 max-w-sm">
-        <h2 className="text-sm font-medium">Add a trainer</h2>
-        {error && (
-          <p className="mt-2 text-sm text-red-600" role="alert">
-            {error}
-          </p>
-        )}
-        <form action={createTrainerAction} className="mt-2 flex flex-col gap-3">
+      <FormSection title="Add a trainer" error={error}>
+        <form action={createTrainerAction} className="flex flex-col gap-3">
           <input type="hidden" name="gymId" value={gymId} />
-          <label className="flex flex-col gap-1 text-sm">
-            Name
-            <input
-              type="text"
-              name="name"
-              required
-              className="rounded border border-gray-300 px-3 py-2"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Contact phone (optional)
-            <input
-              type="tel"
-              name="contactPhone"
-              className="rounded border border-gray-300 px-3 py-2"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Contact email (optional)
-            <input
-              type="email"
-              name="contactEmail"
-              className="rounded border border-gray-300 px-3 py-2"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Specialty / notes (optional)
-            <input
-              type="text"
-              name="specialty"
-              className="rounded border border-gray-300 px-3 py-2"
-            />
-          </label>
-          <button
-            type="submit"
-            className="rounded bg-gray-900 px-3 py-2 text-white"
-          >
+          <TextInput label="Name" type="text" name="name" required />
+          <TextInput label="Contact phone (optional)" type="tel" name="contactPhone" />
+          <TextInput label="Contact email (optional)" type="email" name="contactEmail" />
+          <TextInput label="Specialty / notes (optional)" type="text" name="specialty" />
+          <Button type="submit" variant="primary">
             Add trainer
-          </button>
+          </Button>
         </form>
-      </section>
+      </FormSection>
 
       <section className="mt-8">
-        <h2 className="text-sm font-medium">All trainers</h2>
-        <table className="mt-2 w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-gray-300">
-              <th className="py-2 pr-4">Name</th>
-              <th className="py-2 pr-4">Contact</th>
-              <th className="py-2 pr-4">Status</th>
-              <th className="py-2 pr-4">Members</th>
-              <th className="py-2">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {trainers.map((trainer, i) => (
-              <tr key={trainer.id} className="border-b border-gray-100">
-                <td className="py-2 pr-4">
-                  <Link
-                    href={`/gym/${gymId}/trainers/${trainer.id}/edit`}
-                    className="underline"
-                  >
-                    {trainer.name}
-                  </Link>
-                </td>
-                <td className="py-2 pr-4">
-                  {trainer.contactPhone ?? trainer.contactEmail ?? "—"}
-                </td>
-                <td className="py-2 pr-4">
-                  {trainer.archivedAt ? "Archived" : "Active"}
-                </td>
-                <td className="py-2 pr-4">
-                  <ul className="text-xs">
-                    {trainerMembers[i].map((m) => (
-                      <li key={m.memberId} className="flex items-center gap-2">
-                        {m.memberName}
-                        <form action={unassignTrainerAction}>
+        <h2 className="text-xs font-semibold tracking-wide text-text-tertiary uppercase">
+          All trainers
+        </h2>
+        <div className="mt-3">
+          {!error && <Flash success={success} />}
+          <Table>
+            <Thead>
+              <tr>
+                <Th>Name</Th>
+                <Th>Contact</Th>
+                <Th>Status</Th>
+                <Th>Assigned members</Th>
+                <Th>Action</Th>
+              </tr>
+            </Thead>
+            <tbody>
+              {trainers.map((trainer, i) => (
+                <Tr key={trainer.id}>
+                  <Td>
+                    <Link
+                      href={`/gym/${gymId}/trainers/${trainer.id}/edit`}
+                      className="font-medium text-foreground hover:text-accent"
+                    >
+                      {trainer.name}
+                    </Link>
+                  </Td>
+                  <Td className="text-text-secondary">
+                    {trainer.contactPhone ?? trainer.contactEmail ?? "—"}
+                  </Td>
+                  <Td>
+                    <Badge status={trainer.archivedAt ? "archived" : "active"} />
+                  </Td>
+                  <Td>
+                    <div className="flex max-w-xs flex-wrap gap-1.5">
+                      {trainerMembers[i].map((m) => (
+                        <span
+                          key={m.memberId}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-surface-3 py-1 pr-1.5 pl-2.5 text-xs text-text-secondary"
+                        >
+                          {m.memberName}
+                          <form action={unassignTrainerAction} className="inline">
+                            <input type="hidden" name="gymId" value={gymId} />
+                            <input type="hidden" name="trainerId" value={trainer.id} />
+                            <input type="hidden" name="memberId" value={m.memberId} />
+                            <button
+                              type="submit"
+                              aria-label={`Remove ${m.memberName}`}
+                              className="rounded-full text-text-tertiary hover:text-danger"
+                            >
+                              ×
+                            </button>
+                          </form>
+                        </span>
+                      ))}
+                    </div>
+                    {!trainer.archivedAt && (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer list-none text-xs text-accent hover:text-accent">
+                          + Assign member
+                        </summary>
+                        <form
+                          action={assignTrainerAction}
+                          className="mt-2 flex flex-wrap items-end gap-2"
+                        >
                           <input type="hidden" name="gymId" value={gymId} />
                           <input type="hidden" name="trainerId" value={trainer.id} />
-                          <input type="hidden" name="memberId" value={m.memberId} />
-                          <button type="submit" className="underline">
-                            Remove
-                          </button>
+                          <div className="w-48">
+                            <Select label="Member" name="memberId" required defaultValue="">
+                              <option value="" disabled>
+                                Select a member
+                              </option>
+                              {activeMembers.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.name}
+                                </option>
+                              ))}
+                            </Select>
+                          </div>
+                          <Button type="submit" variant="secondary">
+                            Assign
+                          </Button>
                         </form>
-                      </li>
-                    ))}
-                  </ul>
-                  {!trainer.archivedAt && (
-                    <details className="mt-1">
-                      <summary className="cursor-pointer text-xs underline">
-                        Assign member
-                      </summary>
-                      <form action={assignTrainerAction} className="mt-1 flex gap-2">
+                      </details>
+                    )}
+                  </Td>
+                  <Td>
+                    {trainer.archivedAt ? (
+                      <form action={reactivateTrainerAction}>
                         <input type="hidden" name="gymId" value={gymId} />
                         <input type="hidden" name="trainerId" value={trainer.id} />
-                        <select
-                          name="memberId"
-                          required
-                          className="rounded border border-gray-300 px-2 py-1 text-xs"
-                        >
-                          <option value="">Select a member</option>
-                          {activeMembers.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.name}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="submit"
-                          className="rounded bg-gray-900 px-2 py-1 text-xs text-white"
-                        >
-                          Assign
-                        </button>
+                        <Button type="submit" variant="ghost">
+                          Reactivate
+                        </Button>
                       </form>
-                    </details>
-                  )}
-                </td>
-                <td className="py-2">
-                  {trainer.archivedAt ? (
-                    <form action={reactivateTrainerAction}>
-                      <input type="hidden" name="gymId" value={gymId} />
-                      <input type="hidden" name="trainerId" value={trainer.id} />
-                      <button type="submit" className="text-sm underline">
-                        Reactivate
-                      </button>
-                    </form>
-                  ) : (
-                    <form action={archiveTrainerAction}>
-                      <input type="hidden" name="gymId" value={gymId} />
-                      <input type="hidden" name="trainerId" value={trainer.id} />
-                      <button type="submit" className="text-sm underline">
-                        Archive
-                      </button>
-                    </form>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {trainers.length === 0 && (
-              <tr>
-                <td colSpan={5} className="py-4 text-gray-500">
-                  No trainers yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                    ) : (
+                      <form action={archiveTrainerAction}>
+                        <input type="hidden" name="gymId" value={gymId} />
+                        <input type="hidden" name="trainerId" value={trainer.id} />
+                        <ConfirmSubmitButton
+                          confirmTitle="Archive this trainer?"
+                          confirmMessage={`${trainer.name} will no longer be assignable to members. Existing history is preserved and this can be undone.`}
+                          confirmLabel="Archive"
+                        >
+                          Archive
+                        </ConfirmSubmitButton>
+                      </form>
+                    )}
+                  </Td>
+                </Tr>
+              ))}
+              {trainers.length === 0 && <EmptyRow colSpan={5}>No trainers yet.</EmptyRow>}
+            </tbody>
+          </Table>
+        </div>
       </section>
     </main>
   );

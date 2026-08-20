@@ -1,4 +1,7 @@
 import { requestPasswordResetAction } from "../actions";
+import { AuthCard } from "@/components/ui/AuthCard";
+import { TextInput } from "@/components/ui/TextInput";
+import { Button } from "@/components/ui/Button";
 
 export default async function ForgotPasswordPage({
   searchParams,
@@ -9,37 +12,23 @@ export default async function ForgotPasswordPage({
 
   if (sent) {
     return (
-      <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-4 p-8">
-        <h1 className="text-xl font-semibold">Check your email</h1>
-        <p className="text-sm text-gray-600">
+      <AuthCard title="Check your email">
+        <p role="status" className="text-sm text-text-secondary">
           If an account exists for that email address, a password reset link
           has been sent.
         </p>
-      </main>
+      </AuthCard>
     );
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-4 p-8">
-      <h1 className="text-xl font-semibold">Reset your password</h1>
-      <form action={requestPasswordResetAction} className="flex flex-col gap-3">
-        <label className="flex flex-col gap-1 text-sm">
-          Email
-          <input
-            type="email"
-            name="email"
-            required
-            autoComplete="email"
-            className="rounded border border-gray-300 px-3 py-2"
-          />
-        </label>
-        <button
-          type="submit"
-          className="rounded bg-gray-900 px-3 py-2 text-white"
-        >
+    <AuthCard title="Reset your password">
+      <form action={requestPasswordResetAction} className="flex flex-col gap-4">
+        <TextInput label="Email" type="email" name="email" required autoComplete="email" />
+        <Button type="submit" variant="primary" className="mt-1 w-full">
           Send reset link
-        </button>
+        </Button>
       </form>
-    </main>
+    </AuthCard>
   );
 }

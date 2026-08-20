@@ -106,6 +106,26 @@ export function MembersIcon(props: IconProps) {
   );
 }
 
+export function UserPlusIcon(props: IconProps) {
+  return (
+    <svg {...baseProps(props)}>
+      <circle cx="9" cy="8" r="3.25" />
+      <path d="M2.75 20c0-3.6 2.8-6.5 6.25-6.5s6.25 2.9 6.25 6.5" />
+      <path d="M18 8.5v5" />
+      <path d="M15.5 11h5" />
+    </svg>
+  );
+}
+
+export function ClockIcon(props: IconProps) {
+  return (
+    <svg {...baseProps(props)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7.5V12l3.2 2" />
+    </svg>
+  );
+}
+
 export function MembershipsIcon(props: IconProps) {
   return (
     <svg {...baseProps(props)}>

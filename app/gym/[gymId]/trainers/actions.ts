@@ -43,7 +43,7 @@ export async function createTrainerAction(formData: FormData): Promise<void> {
     redirect(`/gym/${gymId}/trainers?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/trainers`);
+  redirect(`/gym/${gymId}/trainers?success=${encodeURIComponent("Trainer added.")}`);
 }
 
 export async function updateTrainerAction(formData: FormData): Promise<void> {
@@ -65,7 +65,7 @@ export async function updateTrainerAction(formData: FormData): Promise<void> {
     );
   }
 
-  redirect(`/gym/${gymId}/trainers`);
+  redirect(`/gym/${gymId}/trainers?success=${encodeURIComponent("Trainer updated.")}`);
 }
 
 export async function archiveTrainerAction(formData: FormData): Promise<void> {
@@ -75,7 +75,7 @@ export async function archiveTrainerAction(formData: FormData): Promise<void> {
 
   const trainerId = String(formData.get("trainerId") ?? "");
   await archiveTrainer({ userId: session.userId, gymId, role: session.role }, trainerId);
-  redirect(`/gym/${gymId}/trainers`);
+  redirect(`/gym/${gymId}/trainers?success=${encodeURIComponent("Trainer archived.")}`);
 }
 
 export async function reactivateTrainerAction(formData: FormData): Promise<void> {
@@ -85,7 +85,7 @@ export async function reactivateTrainerAction(formData: FormData): Promise<void>
 
   const trainerId = String(formData.get("trainerId") ?? "");
   await reactivateTrainer({ userId: session.userId, gymId, role: session.role }, trainerId);
-  redirect(`/gym/${gymId}/trainers`);
+  redirect(`/gym/${gymId}/trainers?success=${encodeURIComponent("Trainer reactivated.")}`);
 }
 
 export async function assignTrainerAction(formData: FormData): Promise<void> {

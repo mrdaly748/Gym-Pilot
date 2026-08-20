@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireGym, requireRole } from "@/lib/server/auth";
 import { listGymStaff } from "@/lib/server/services/gymStaff";
@@ -7,6 +6,14 @@ import {
   disableGymStaffAction,
   enableGymStaffAction,
 } from "./actions";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { FormSection } from "@/components/ui/FormSection";
+import { TextInput } from "@/components/ui/TextInput";
+import { Button } from "@/components/ui/Button";
+import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
+import { Badge } from "@/components/ui/Badge";
+import { Table, Thead, Th, Td, Tr, EmptyRow } from "@/components/ui/Table";
+import { Flash } from "@/components/ui/Flash";
 
 /**
  * app/gym/[gymId]/layout.tsx allows both GYM_ADMIN and GYM_STAFF into the
@@ -19,10 +26,10 @@ export default async function GymStaffPage({
   searchParams,
 }: {
   params: Promise<{ gymId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; success?: string }>;
 }) {
   const { gymId } = await params;
-  const { error } = await searchParams;
+  const { error, success } = await searchParams;
 
   let session;
   try {
@@ -39,97 +46,69 @@ export default async function GymStaffPage({
   });
 
   return (
-    <main className="p-8">
-      <Link href={`/gym/${gymId}`} className="text-sm underline">
-        &larr; Gym
-      </Link>
-      <h1 className="mt-2 text-xl font-semibold">Gym Staff</h1>
+    <main className="p-6 md:p-8">
+      <PageHeader title="Gym Staff" backHref={`/gym/${gymId}`} backLabel="Gym" />
 
-      <section className="mt-6 max-w-sm">
-        <h2 className="text-sm font-medium">Add staff</h2>
-        {error && (
-          <p className="mt-2 text-sm text-red-600" role="alert">
-            {error}
-          </p>
-        )}
-        <form
-          action={createGymStaffAction}
-          className="mt-2 flex flex-col gap-3"
-        >
+      <FormSection title="Add staff" error={error}>
+        <form action={createGymStaffAction} className="flex flex-col gap-3">
           <input type="hidden" name="gymId" value={gymId} />
-          <label className="flex flex-col gap-1 text-sm">
-            Staff email
-            <input
-              type="email"
-              name="email"
-              required
-              className="rounded border border-gray-300 px-3 py-2"
-            />
-          </label>
-          <button
-            type="submit"
-            className="rounded bg-gray-900 px-3 py-2 text-white"
-          >
+          <TextInput label="Staff email" type="email" name="email" required />
+          <Button type="submit" variant="primary">
             Invite staff
-          </button>
+          </Button>
         </form>
-      </section>
+      </FormSection>
 
       <section className="mt-8">
-        <h2 className="text-sm font-medium">Staff logins</h2>
-        <table className="mt-2 w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-gray-300">
-              <th className="py-2 pr-4">Email</th>
-              <th className="py-2 pr-4">Status</th>
-              <th className="py-2">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {staff.map((member) => (
-              <tr key={member.id} className="border-b border-gray-100">
-                <td className="py-2 pr-4">{member.email}</td>
-                <td className="py-2 pr-4">
-                  {member.disabledAt ? "Disabled" : "Active"}
-                </td>
-                <td className="py-2">
-                  {member.disabledAt ? (
-                    <form action={enableGymStaffAction}>
-                      <input type="hidden" name="gymId" value={gymId} />
-                      <input
-                        type="hidden"
-                        name="membershipId"
-                        value={member.id}
-                      />
-                      <button type="submit" className="text-sm underline">
-                        Enable
-                      </button>
-                    </form>
-                  ) : (
-                    <form action={disableGymStaffAction}>
-                      <input type="hidden" name="gymId" value={gymId} />
-                      <input
-                        type="hidden"
-                        name="membershipId"
-                        value={member.id}
-                      />
-                      <button type="submit" className="text-sm underline">
-                        Disable
-                      </button>
-                    </form>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {staff.length === 0 && (
+        <h2 className="text-xs font-semibold tracking-wide text-text-tertiary uppercase">
+          Staff logins
+        </h2>
+        <div className="mt-3">
+          {!error && <Flash success={success} />}
+          <Table>
+            <Thead>
               <tr>
-                <td colSpan={3} className="py-4 text-gray-500">
-                  No staff yet.
-                </td>
+                <Th>Email</Th>
+                <Th>Status</Th>
+                <Th>Action</Th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </Thead>
+            <tbody>
+              {staff.map((member) => (
+                <Tr key={member.id}>
+                  <Td className="font-medium">{member.email}</Td>
+                  <Td>
+                    <Badge status={member.disabledAt ? "disabled" : "active"} />
+                  </Td>
+                  <Td>
+                    {member.disabledAt ? (
+                      <form action={enableGymStaffAction}>
+                        <input type="hidden" name="gymId" value={gymId} />
+                        <input type="hidden" name="membershipId" value={member.id} />
+                        <Button type="submit" variant="ghost">
+                          Enable
+                        </Button>
+                      </form>
+                    ) : (
+                      <form action={disableGymStaffAction}>
+                        <input type="hidden" name="gymId" value={gymId} />
+                        <input type="hidden" name="membershipId" value={member.id} />
+                        <ConfirmSubmitButton
+                          confirmTitle="Disable this staff login?"
+                          confirmMessage={`${member.email} will immediately lose access. You can re-enable it later.`}
+                          confirmLabel="Disable"
+                        >
+                          Disable
+                        </ConfirmSubmitButton>
+                      </form>
+                    )}
+                  </Td>
+                </Tr>
+              ))}
+              {staff.length === 0 && <EmptyRow colSpan={3}>No staff yet.</EmptyRow>}
+            </tbody>
+          </Table>
+        </div>
       </section>
     </main>
   );

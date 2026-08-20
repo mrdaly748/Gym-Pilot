@@ -32,7 +32,7 @@ export async function createGymStaffAction(formData: FormData): Promise<void> {
     redirect(`/gym/${gymId}/staff?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/staff`);
+  redirect(`/gym/${gymId}/staff?success=${encodeURIComponent("Staff invited.")}`);
 }
 
 export async function disableGymStaffAction(formData: FormData): Promise<void> {
@@ -45,7 +45,7 @@ export async function disableGymStaffAction(formData: FormData): Promise<void> {
     { userId: session.userId, gymId, role: session.role },
     membershipId,
   );
-  redirect(`/gym/${gymId}/staff`);
+  redirect(`/gym/${gymId}/staff?success=${encodeURIComponent("Staff login disabled.")}`);
 }
 
 export async function enableGymStaffAction(formData: FormData): Promise<void> {
@@ -58,5 +58,5 @@ export async function enableGymStaffAction(formData: FormData): Promise<void> {
     { userId: session.userId, gymId, role: session.role },
     membershipId,
   );
-  redirect(`/gym/${gymId}/staff`);
+  redirect(`/gym/${gymId}/staff?success=${encodeURIComponent("Staff login enabled.")}`);
 }

@@ -26,7 +26,7 @@ export async function checkInAction(formData: FormData): Promise<void> {
     redirect(`/gym/${gymId}/attendance?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/attendance`);
+  redirect(`/gym/${gymId}/attendance?success=${encodeURIComponent("Checked in.")}`);
 }
 
 /** Gym Admin only — requireRole enforces this here; the RLS UPDATE policy (Gym-Admin-only) enforces it independently at the database layer. */
@@ -47,7 +47,7 @@ export async function correctCheckinAction(formData: FormData): Promise<void> {
     redirect(`/gym/${gymId}/attendance?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/attendance`);
+  redirect(`/gym/${gymId}/attendance?success=${encodeURIComponent("Check-in corrected.")}`);
 }
 
 /** Gym Admin only — requireRole enforces this here; the RLS DELETE policy (Gym-Admin-only) enforces it independently at the database layer. */
@@ -65,5 +65,5 @@ export async function deleteCheckinAction(formData: FormData): Promise<void> {
     redirect(`/gym/${gymId}/attendance?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/attendance`);
+  redirect(`/gym/${gymId}/attendance?success=${encodeURIComponent("Check-in deleted.")}`);
 }

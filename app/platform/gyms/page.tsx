@@ -1,10 +1,16 @@
-import Link from "next/link";
 import { listGyms } from "@/lib/server/services/platformAdmin";
 import {
   createGymAction,
   reactivateGymAction,
   suspendGymAction,
 } from "./actions";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { FormSection } from "@/components/ui/FormSection";
+import { TextInput } from "@/components/ui/TextInput";
+import { Button } from "@/components/ui/Button";
+import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
+import { Badge } from "@/components/ui/Badge";
+import { Table, Thead, Th, Td, Tr, EmptyRow } from "@/components/ui/Table";
 
 /**
  * Role/authentication is already guarded by app/platform/layout.tsx
@@ -22,94 +28,68 @@ export default async function PlatformGymsPage({
   const gyms = await listGyms();
 
   return (
-    <main className="p-8">
-      <Link href="/platform" className="text-sm underline">
-        &larr; Platform Admin
-      </Link>
-      <h1 className="mt-2 text-xl font-semibold">Gyms</h1>
+    <main className="p-6 md:p-8">
+      <PageHeader title="Gyms" backHref="/platform" backLabel="Platform Admin" />
 
-      <section className="mt-6 max-w-sm">
-        <h2 className="text-sm font-medium">Create a gym</h2>
-        {error && (
-          <p className="mt-2 text-sm text-red-600" role="alert">
-            {error}
-          </p>
-        )}
-        <form action={createGymAction} className="mt-2 flex flex-col gap-3">
-          <label className="flex flex-col gap-1 text-sm">
-            Gym name
-            <input
-              type="text"
-              name="name"
-              required
-              className="rounded border border-gray-300 px-3 py-2"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Initial Gym Admin email
-            <input
-              type="email"
-              name="adminEmail"
-              required
-              className="rounded border border-gray-300 px-3 py-2"
-            />
-          </label>
-          <button
-            type="submit"
-            className="rounded bg-gray-900 px-3 py-2 text-white"
-          >
+      <FormSection title="Create a gym" error={error}>
+        <form action={createGymAction} className="flex flex-col gap-3">
+          <TextInput label="Gym name" type="text" name="name" required />
+          <TextInput label="Initial Gym Admin email" type="email" name="adminEmail" required />
+          <Button type="submit" variant="primary">
             Create gym &amp; invite admin
-          </button>
+          </Button>
         </form>
-      </section>
+      </FormSection>
 
       <section className="mt-8">
-        <h2 className="text-sm font-medium">All gyms</h2>
-        <table className="mt-2 w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-gray-300">
-              <th className="py-2 pr-4">Name</th>
-              <th className="py-2 pr-4">Status</th>
-              <th className="py-2 pr-4">Created</th>
-              <th className="py-2">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {gyms.map((gym) => (
-              <tr key={gym.id} className="border-b border-gray-100">
-                <td className="py-2 pr-4">{gym.name}</td>
-                <td className="py-2 pr-4">{gym.status}</td>
-                <td className="py-2 pr-4">
-                  {gym.createdAt.toLocaleDateString()}
-                </td>
-                <td className="py-2">
-                  {gym.status === "ACTIVE" ? (
-                    <form action={suspendGymAction}>
-                      <input type="hidden" name="gymId" value={gym.id} />
-                      <button type="submit" className="text-sm underline">
-                        Suspend
-                      </button>
-                    </form>
-                  ) : (
-                    <form action={reactivateGymAction}>
-                      <input type="hidden" name="gymId" value={gym.id} />
-                      <button type="submit" className="text-sm underline">
-                        Reactivate
-                      </button>
-                    </form>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {gyms.length === 0 && (
+        <h2 className="text-xs font-semibold tracking-wide text-text-tertiary uppercase">
+          All gyms
+        </h2>
+        <div className="mt-3">
+          <Table>
+            <Thead>
               <tr>
-                <td colSpan={4} className="py-4 text-gray-500">
-                  No gyms yet.
-                </td>
+                <Th>Name</Th>
+                <Th>Status</Th>
+                <Th>Created</Th>
+                <Th>Action</Th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </Thead>
+            <tbody>
+              {gyms.map((gym) => (
+                <Tr key={gym.id}>
+                  <Td className="font-medium">{gym.name}</Td>
+                  <Td>
+                    <Badge status={gym.status === "SUSPENDED" ? "suspended" : "active"} />
+                  </Td>
+                  <Td className="text-text-secondary">{gym.createdAt.toLocaleDateString()}</Td>
+                  <Td>
+                    {gym.status === "ACTIVE" ? (
+                      <form action={suspendGymAction}>
+                        <input type="hidden" name="gymId" value={gym.id} />
+                        <ConfirmSubmitButton
+                          confirmTitle="Suspend this gym?"
+                          confirmMessage={`${gym.name} and its staff will immediately lose access. You can reactivate it later.`}
+                          confirmLabel="Suspend"
+                        >
+                          Suspend
+                        </ConfirmSubmitButton>
+                      </form>
+                    ) : (
+                      <form action={reactivateGymAction}>
+                        <input type="hidden" name="gymId" value={gym.id} />
+                        <Button type="submit" variant="ghost">
+                          Reactivate
+                        </Button>
+                      </form>
+                    )}
+                  </Td>
+                </Tr>
+              ))}
+              {gyms.length === 0 && <EmptyRow colSpan={4}>No gyms yet.</EmptyRow>}
+            </tbody>
+          </Table>
+        </div>
       </section>
     </main>
   );

@@ -1,8 +1,15 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireGym, requireRole } from "@/lib/server/auth";
 import { listPlans } from "@/lib/server/services/plans";
 import { archivePlanAction, createPlanAction } from "./actions";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { FormSection } from "@/components/ui/FormSection";
+import { TextInput } from "@/components/ui/TextInput";
+import { Button } from "@/components/ui/Button";
+import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
+import { Badge } from "@/components/ui/Badge";
+import { Table, Thead, Th, Td, Tr, EmptyRow } from "@/components/ui/Table";
+import { Flash } from "@/components/ui/Flash";
 
 function formatPrice(millimes: number): string {
   return (millimes / 1000).toFixed(3) + " TND";
@@ -18,10 +25,10 @@ export default async function MembershipPlansPage({
   searchParams,
 }: {
   params: Promise<{ gymId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; success?: string }>;
 }) {
   const { gymId } = await params;
-  const { error } = await searchParams;
+  const { error, success } = await searchParams;
 
   let session;
   try {
@@ -34,106 +41,83 @@ export default async function MembershipPlansPage({
   const plans = await listPlans({ userId: session.userId, gymId, role: session.role });
 
   return (
-    <main className="p-8">
-      <Link href={`/gym/${gymId}`} className="text-sm underline">
-        &larr; Gym
-      </Link>
-      <h1 className="mt-2 text-xl font-semibold">Membership Plans</h1>
+    <main className="p-6 md:p-8">
+      <PageHeader title="Membership Plans" backHref={`/gym/${gymId}`} backLabel="Gym" />
 
-      <section className="mt-6 max-w-sm">
-        <h2 className="text-sm font-medium">Create a plan</h2>
-        {error && (
-          <p className="mt-2 text-sm text-red-600" role="alert">
-            {error}
-          </p>
-        )}
-        <form action={createPlanAction} className="mt-2 flex flex-col gap-3">
+      <FormSection title="Create a plan" error={error}>
+        <form action={createPlanAction} className="flex flex-col gap-3">
           <input type="hidden" name="gymId" value={gymId} />
-          <label className="flex flex-col gap-1 text-sm">
-            Plan name
-            <input
-              type="text"
-              name="name"
-              required
-              className="rounded border border-gray-300 px-3 py-2"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Price (TND, 0 for a free trial)
-            <input
-              type="number"
-              name="price"
-              step="0.001"
-              min="0"
-              required
-              defaultValue="0"
-              className="rounded border border-gray-300 px-3 py-2"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Duration (days)
-            <input
-              type="number"
-              name="durationDays"
-              step="1"
-              min="1"
-              required
-              defaultValue="30"
-              className="rounded border border-gray-300 px-3 py-2"
-            />
-          </label>
-          <button
-            type="submit"
-            className="rounded bg-gray-900 px-3 py-2 text-white"
-          >
+          <TextInput label="Plan name" type="text" name="name" required />
+          <TextInput
+            label="Price (TND, 0 for a free trial)"
+            type="number"
+            name="price"
+            step="0.001"
+            min="0"
+            required
+            defaultValue="0"
+          />
+          <TextInput
+            label="Duration (days)"
+            type="number"
+            name="durationDays"
+            step="1"
+            min="1"
+            required
+            defaultValue="30"
+          />
+          <Button type="submit" variant="primary">
             Create plan
-          </button>
+          </Button>
         </form>
-      </section>
+      </FormSection>
 
       <section className="mt-8">
-        <h2 className="text-sm font-medium">All plans</h2>
-        <table className="mt-2 w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-gray-300">
-              <th className="py-2 pr-4">Name</th>
-              <th className="py-2 pr-4">Price</th>
-              <th className="py-2 pr-4">Duration</th>
-              <th className="py-2 pr-4">Status</th>
-              <th className="py-2">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {plans.map((plan) => (
-              <tr key={plan.id} className="border-b border-gray-100">
-                <td className="py-2 pr-4">{plan.name}</td>
-                <td className="py-2 pr-4">{formatPrice(plan.priceMillimes)}</td>
-                <td className="py-2 pr-4">{plan.durationDays} days</td>
-                <td className="py-2 pr-4">
-                  {plan.archivedAt ? "Archived" : "Active"}
-                </td>
-                <td className="py-2">
-                  {!plan.archivedAt && (
-                    <form action={archivePlanAction}>
-                      <input type="hidden" name="gymId" value={gymId} />
-                      <input type="hidden" name="planId" value={plan.id} />
-                      <button type="submit" className="text-sm underline">
-                        Archive
-                      </button>
-                    </form>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {plans.length === 0 && (
+        <h2 className="text-xs font-semibold tracking-wide text-text-tertiary uppercase">
+          All plans
+        </h2>
+        <div className="mt-3">
+          {!error && <Flash success={success} />}
+          <Table>
+            <Thead>
               <tr>
-                <td colSpan={5} className="py-4 text-gray-500">
-                  No plans yet.
-                </td>
+                <Th>Name</Th>
+                <Th>Price</Th>
+                <Th>Duration</Th>
+                <Th>Status</Th>
+                <Th>Action</Th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </Thead>
+            <tbody>
+              {plans.map((plan) => (
+                <Tr key={plan.id}>
+                  <Td className="font-medium">{plan.name}</Td>
+                  <Td className="text-text-secondary">{formatPrice(plan.priceMillimes)}</Td>
+                  <Td className="text-text-secondary">{plan.durationDays} days</Td>
+                  <Td>
+                    <Badge status={plan.archivedAt ? "archived" : "active"} />
+                  </Td>
+                  <Td>
+                    {!plan.archivedAt && (
+                      <form action={archivePlanAction}>
+                        <input type="hidden" name="gymId" value={gymId} />
+                        <input type="hidden" name="planId" value={plan.id} />
+                        <ConfirmSubmitButton
+                          confirmTitle="Archive this plan?"
+                          confirmMessage={`${plan.name} will no longer be selectable for new memberships. Existing history is preserved and this can be undone.`}
+                          confirmLabel="Archive"
+                        >
+                          Archive
+                        </ConfirmSubmitButton>
+                      </form>
+                    )}
+                  </Td>
+                </Tr>
+              ))}
+              {plans.length === 0 && <EmptyRow colSpan={5}>No plans yet.</EmptyRow>}
+            </tbody>
+          </Table>
+        </div>
       </section>
     </main>
   );

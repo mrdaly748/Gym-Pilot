@@ -38,7 +38,7 @@ export async function createPlanAction(formData: FormData): Promise<void> {
     redirect(`/gym/${gymId}/memberships/plans?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/memberships/plans`);
+  redirect(`/gym/${gymId}/memberships/plans?success=${encodeURIComponent("Plan created.")}`);
 }
 
 export async function archivePlanAction(formData: FormData): Promise<void> {
@@ -48,5 +48,5 @@ export async function archivePlanAction(formData: FormData): Promise<void> {
 
   const planId = String(formData.get("planId") ?? "");
   await archivePlan({ userId: session.userId, gymId, role: session.role }, planId);
-  redirect(`/gym/${gymId}/memberships/plans`);
+  redirect(`/gym/${gymId}/memberships/plans?success=${encodeURIComponent("Plan archived.")}`);
 }

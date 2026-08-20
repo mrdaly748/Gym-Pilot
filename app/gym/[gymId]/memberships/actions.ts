@@ -36,7 +36,7 @@ export async function assignMembershipAction(formData: FormData): Promise<void> 
     redirect(`/gym/${gymId}/memberships?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/memberships`);
+  redirect(`/gym/${gymId}/memberships?success=${encodeURIComponent("Membership assigned.")}`);
 }
 
 export async function renewMembershipAction(formData: FormData): Promise<void> {
@@ -53,7 +53,7 @@ export async function renewMembershipAction(formData: FormData): Promise<void> {
     redirect(`/gym/${gymId}/memberships?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/memberships`);
+  redirect(`/gym/${gymId}/memberships?success=${encodeURIComponent("Membership renewed.")}`);
 }
 
 export async function freezeMembershipAction(formData: FormData): Promise<void> {
@@ -70,7 +70,7 @@ export async function freezeMembershipAction(formData: FormData): Promise<void> 
     redirect(`/gym/${gymId}/memberships?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/memberships`);
+  redirect(`/gym/${gymId}/memberships?success=${encodeURIComponent("Membership frozen.")}`);
 }
 
 export async function resumeMembershipAction(formData: FormData): Promise<void> {
@@ -87,7 +87,7 @@ export async function resumeMembershipAction(formData: FormData): Promise<void> 
     redirect(`/gym/${gymId}/memberships?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/memberships`);
+  redirect(`/gym/${gymId}/memberships?success=${encodeURIComponent("Membership resumed.")}`);
 }
 
 /** Gym Admin only — requireRole enforces this here; RLS's WITH CHECK enforces it independently at the database layer too. */
@@ -105,5 +105,5 @@ export async function cancelMembershipAction(formData: FormData): Promise<void> 
     redirect(`/gym/${gymId}/memberships?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/memberships`);
+  redirect(`/gym/${gymId}/memberships?success=${encodeURIComponent("Membership cancelled.")}`);
 }

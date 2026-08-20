@@ -42,7 +42,7 @@ export async function createMemberAction(formData: FormData): Promise<void> {
     redirect(`/gym/${gymId}/members?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/members`);
+  redirect(`/gym/${gymId}/members?success=${encodeURIComponent("Member registered.")}`);
 }
 
 export async function updateMemberAction(formData: FormData): Promise<void> {
@@ -69,7 +69,7 @@ export async function updateMemberAction(formData: FormData): Promise<void> {
     );
   }
 
-  redirect(`/gym/${gymId}/members`);
+  redirect(`/gym/${gymId}/members?success=${encodeURIComponent("Member updated.")}`);
 }
 
 export async function archiveMemberAction(formData: FormData): Promise<void> {
@@ -79,7 +79,7 @@ export async function archiveMemberAction(formData: FormData): Promise<void> {
 
   const memberId = String(formData.get("memberId") ?? "");
   await archiveMember({ userId: session.userId, gymId, role: session.role }, memberId);
-  redirect(`/gym/${gymId}/members`);
+  redirect(`/gym/${gymId}/members?success=${encodeURIComponent("Member archived.")}`);
 }
 
 export async function reactivateMemberAction(formData: FormData): Promise<void> {
@@ -89,5 +89,5 @@ export async function reactivateMemberAction(formData: FormData): Promise<void> 
 
   const memberId = String(formData.get("memberId") ?? "");
   await reactivateMember({ userId: session.userId, gymId, role: session.role }, memberId);
-  redirect(`/gym/${gymId}/members`);
+  redirect(`/gym/${gymId}/members?success=${encodeURIComponent("Member reactivated.")}`);
 }

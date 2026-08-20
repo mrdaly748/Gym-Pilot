@@ -1,9 +1,26 @@
 import Link from "next/link";
 import { requireGym, requireRole } from "@/lib/server/auth";
-import { gymAttendanceMetrics } from "@/lib/server/services/attendance";
+import { gymAttendanceMetrics, gymAttendanceTrend } from "@/lib/server/services/attendance";
 import { gymExpensesForPeriod } from "@/lib/server/services/expenses";
 import { gymMembershipDashboardSummary } from "@/lib/server/services/memberships";
-import { gymOutstandingBalance, gymRevenueForPeriod } from "@/lib/server/services/payments";
+import {
+  gymOutstandingBalance,
+  gymRevenueForPeriod,
+  gymRevenueTrend,
+} from "@/lib/server/services/payments";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { StatCard } from "@/components/ui/StatCard";
+import { Table, Thead, Th, Td, Tr, EmptyRow } from "@/components/ui/Table";
+import { Badge } from "@/components/ui/Badge";
+import { TrendAreaChart, type TrendPoint } from "@/components/charts/TrendAreaChart";
+import {
+  AttendanceIcon,
+  ClockIcon,
+  ExpensesIcon,
+  MembersIcon,
+  PaymentsIcon,
+  UserPlusIcon,
+} from "@/components/ui/icons";
 
 type Period = "this-month" | "last-month";
 
@@ -25,6 +42,23 @@ function startOfToday(date: Date): Date {
 
 function endOfToday(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+}
+
+type MonthlyPeriod = { start: Date; end: Date };
+const TREND_MONTHS = 6;
+
+/** Same "last N calendar months" window Analytics uses (gymRevenueTrend/gymAttendanceTrend are period-agnostic — this is a UI-side composition choice, not new backend logic). */
+function lastMonths(now: Date, count: number): MonthlyPeriod[] {
+  const periods: MonthlyPeriod[] = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    periods.push({ start: startOfMonth(monthDate), end: endOfMonth(monthDate) });
+  }
+  return periods;
+}
+
+function monthLabel(date: Date): string {
+  return date.toLocaleDateString(undefined, { month: "short" });
 }
 
 /**
@@ -49,27 +83,23 @@ function formatMillimes(millimes: number): string {
   return (millimes / 1000).toFixed(3) + " TND";
 }
 
-function formatDate(date: Date): string {
-  return new Date(date).toLocaleDateString();
+function formatMillimesCompact(millimes: number): string {
+  return Math.round(millimes / 1000).toLocaleString() + " TND";
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded border border-gray-200 p-4">
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold">{value}</p>
-    </div>
-  );
+function formatDate(date: Date): string {
+  return new Date(date).toLocaleDateString();
 }
 
 /**
  * Gym Admin AND Gym Staff (product-spec.md §11.8) — role-branched below,
  * before any query runs. Gym Staff's branch never calls
- * gymRevenueForPeriod/gymExpensesForPeriod/gymOutstandingBalance at all —
- * not merely omitted from the rendered output, so there is no code path on
- * this page through which a Staff session's request can even reach the
- * financial tables it has zero RLS access to anyway (defense in depth, per
- * every prior phase's authorization discipline).
+ * gymRevenueForPeriod/gymExpensesForPeriod/gymOutstandingBalance/
+ * gymRevenueTrend at all — not merely omitted from the rendered output, so
+ * there is no code path on this page through which a Staff session's
+ * request can even reach the financial tables it has zero RLS access to
+ * anyway (defense in depth, per every prior phase's authorization
+ * discipline).
  */
 export default async function DashboardPage({
   params,
@@ -86,84 +116,169 @@ export default async function DashboardPage({
   const context = { userId: session.userId, gymId, role: session.role };
   const now = new Date();
   const { period, start, end } = resolvePeriod(requestedPeriod, now);
+  const trendPeriods = lastMonths(now, TREND_MONTHS);
 
   if (session.role === "GYM_STAFF") {
-    const [membershipSummary, todayAttendance] = await Promise.all([
+    const [membershipSummary, todayAttendance, attendanceTrend] = await Promise.all([
       gymMembershipDashboardSummary(context, start, end),
       gymAttendanceMetrics(context, startOfToday(now), endOfToday(now)),
+      gymAttendanceTrend(context, trendPeriods),
     ]);
 
-    return (
-      <main className="p-8">
-        <Link href={`/gym/${gymId}`} className="text-sm underline">
-          &larr; Gym
-        </Link>
-        <h1 className="mt-2 text-xl font-semibold">Dashboard</h1>
+    const attendancePoints: TrendPoint[] = attendanceTrend.map((p) => ({
+      label: monthLabel(p.start),
+      value: p.totalCheckins,
+    }));
 
-        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <StatCard label="Today's check-ins" value={String(todayAttendance.totalCheckins)} />
-          <StatCard label="Today's unique visitors" value={String(todayAttendance.uniqueVisitors)} />
+    return (
+      <main className="p-6 md:p-8">
+        <PageHeader title="Dashboard" backHref={`/gym/${gymId}`} backLabel="Gym" />
+
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-2">
+          <StatCard
+            label="Today's check-ins"
+            value={String(todayAttendance.totalCheckins)}
+            icon={<AttendanceIcon className="h-4.5 w-4.5" />}
+            tone="accent"
+          />
+          <StatCard
+            label="Today's unique visitors"
+            value={String(todayAttendance.uniqueVisitors)}
+            icon={<MembersIcon className="h-4.5 w-4.5" />}
+          />
         </div>
 
-        <section className="mt-8">
-          <h2 className="text-sm font-medium">Memberships expiring soon</h2>
-          <ExpiringList gymId={gymId} items={membershipSummary.expiringSoon} />
+        <section className="mt-8 rounded-lg border border-border-subtle bg-surface-2 p-4">
+          <h2 className="text-xs font-semibold tracking-wide text-text-tertiary uppercase">
+            Check-ins — last {TREND_MONTHS} months
+          </h2>
+          <div className="mt-3">
+            <TrendAreaChart data={attendancePoints} valueFormatter={(v) => String(v)} />
+          </div>
         </section>
 
         <section className="mt-8">
-          <Link href={`/gym/${gymId}/members`} className="text-sm underline">
-            Go to Members &rarr;
-          </Link>
+          <h2 className="text-xs font-semibold tracking-wide text-text-tertiary uppercase">
+            Memberships expiring soon
+          </h2>
+          <div className="mt-3">
+            <ExpiringList gymId={gymId} items={membershipSummary.expiringSoon} />
+          </div>
         </section>
       </main>
     );
   }
 
-  const [membershipSummary, revenue, expenses, outstanding, attendance] = await Promise.all([
-    gymMembershipDashboardSummary(context, start, end),
-    gymRevenueForPeriod(context, start, end),
-    gymExpensesForPeriod(context, start, end),
-    gymOutstandingBalance(context),
-    gymAttendanceMetrics(context, start, end),
-  ]);
+  const [membershipSummary, revenue, expenses, outstanding, attendance, revenueTrend] =
+    await Promise.all([
+      gymMembershipDashboardSummary(context, start, end),
+      gymRevenueForPeriod(context, start, end),
+      gymExpensesForPeriod(context, start, end),
+      gymOutstandingBalance(context),
+      gymAttendanceMetrics(context, start, end),
+      gymRevenueTrend(context, trendPeriods),
+    ]);
+
+  const revenuePoints: TrendPoint[] = revenueTrend.map((p) => ({
+    label: monthLabel(p.start),
+    value: p.revenueMillimes / 1000,
+  }));
+
+  const periodSwitcher = (
+    <nav className="flex gap-1 rounded-lg border border-border-subtle bg-surface-2 p-1 text-sm">
+      <Link
+        href={`/gym/${gymId}/dashboard?period=this-month`}
+        className={`rounded-md px-3 py-1.5 ${
+          period === "this-month"
+            ? "bg-accent-soft-bg font-medium text-accent"
+            : "text-text-secondary hover:text-foreground"
+        }`}
+      >
+        This month
+      </Link>
+      <Link
+        href={`/gym/${gymId}/dashboard?period=last-month`}
+        className={`rounded-md px-3 py-1.5 ${
+          period === "last-month"
+            ? "bg-accent-soft-bg font-medium text-accent"
+            : "text-text-secondary hover:text-foreground"
+        }`}
+      >
+        Last month
+      </Link>
+    </nav>
+  );
 
   return (
-    <main className="p-8">
-      <Link href={`/gym/${gymId}`} className="text-sm underline">
-        &larr; Gym
-      </Link>
-      <div className="mt-2 flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Dashboard</h1>
-        <nav className="flex gap-3 text-sm">
-          <Link
-            href={`/gym/${gymId}/dashboard?period=this-month`}
-            className={period === "this-month" ? "font-semibold underline" : "underline"}
-          >
-            This month
-          </Link>
-          <Link
-            href={`/gym/${gymId}/dashboard?period=last-month`}
-            className={period === "last-month" ? "font-semibold underline" : "underline"}
-          >
-            Last month
-          </Link>
-        </nav>
+    <main className="p-6 md:p-8">
+      <PageHeader
+        title="Dashboard"
+        backHref={`/gym/${gymId}`}
+        backLabel="Gym"
+        actions={periodSwitcher}
+      />
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <StatCard
+          label="Active members"
+          value={String(membershipSummary.activeMembers)}
+          icon={<MembersIcon className="h-4.5 w-4.5" />}
+          tone="accent"
+        />
+        <StatCard
+          label="New members"
+          value={String(membershipSummary.newMembers)}
+          icon={<UserPlusIcon className="h-4.5 w-4.5" />}
+          tone="success"
+        />
+        <StatCard
+          label="Memberships expiring soon"
+          value={String(membershipSummary.expiringSoon.length)}
+          icon={<ClockIcon className="h-4.5 w-4.5" />}
+          tone="warning"
+        />
+        <StatCard
+          label="Outstanding payments"
+          value={formatMillimes(outstanding)}
+          icon={<PaymentsIcon className="h-4.5 w-4.5" />}
+          tone="warning"
+        />
+        <StatCard
+          label="Revenue"
+          value={formatMillimes(revenue)}
+          icon={<PaymentsIcon className="h-4.5 w-4.5" />}
+          tone="success"
+        />
+        <StatCard
+          label="Total expenses"
+          value={formatMillimes(expenses)}
+          icon={<ExpensesIcon className="h-4.5 w-4.5" />}
+        />
+        <StatCard
+          label="Total check-ins"
+          value={String(attendance.totalCheckins)}
+          icon={<AttendanceIcon className="h-4.5 w-4.5" />}
+          tone="accent"
+        />
+        <StatCard label="Unique visitors" value={String(attendance.uniqueVisitors)} icon={<MembersIcon className="h-4.5 w-4.5" />} />
       </div>
 
-      <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard label="Active members" value={String(membershipSummary.activeMembers)} />
-        <StatCard label="New members" value={String(membershipSummary.newMembers)} />
-        <StatCard label="Memberships expiring soon" value={String(membershipSummary.expiringSoon.length)} />
-        <StatCard label="Outstanding payments" value={formatMillimes(outstanding)} />
-        <StatCard label="Revenue" value={formatMillimes(revenue)} />
-        <StatCard label="Total expenses" value={formatMillimes(expenses)} />
-        <StatCard label="Total check-ins" value={String(attendance.totalCheckins)} />
-        <StatCard label="Unique visitors" value={String(attendance.uniqueVisitors)} />
-      </div>
+      <section className="mt-8 rounded-lg border border-border-subtle bg-surface-2 p-4">
+        <h2 className="text-xs font-semibold tracking-wide text-text-tertiary uppercase">
+          Revenue — last {TREND_MONTHS} months
+        </h2>
+        <div className="mt-3">
+          <TrendAreaChart data={revenuePoints} valueFormatter={(v) => formatMillimesCompact(v * 1000)} />
+        </div>
+      </section>
 
       <section className="mt-8">
-        <h2 className="text-sm font-medium">Memberships expiring soon</h2>
-        <ExpiringList gymId={gymId} items={membershipSummary.expiringSoon} />
+        <h2 className="text-xs font-semibold tracking-wide text-text-tertiary uppercase">
+          Memberships expiring soon
+        </h2>
+        <div className="mt-3">
+          <ExpiringList gymId={gymId} items={membershipSummary.expiringSoon} />
+        </div>
       </section>
     </main>
   );
@@ -176,29 +291,34 @@ function ExpiringList({
   gymId: string;
   items: { id: string; memberId: string; memberName: string; endDate: Date }[];
 }) {
-  if (items.length === 0) {
-    return <p className="mt-2 text-sm text-gray-500">No memberships expiring soon.</p>;
-  }
   return (
-    <table className="mt-2 w-full text-left text-sm">
-      <thead>
-        <tr className="border-b border-gray-300">
-          <th className="py-2 pr-4">Member</th>
-          <th className="py-2">Expires</th>
+    <Table>
+      <Thead>
+        <tr>
+          <Th>Member</Th>
+          <Th>Expires</Th>
+          <Th>Status</Th>
         </tr>
-      </thead>
+      </Thead>
       <tbody>
         {items.map((item) => (
-          <tr key={item.id} className="border-b border-gray-100">
-            <td className="py-2 pr-4">
-              <Link href={`/gym/${gymId}/members/${item.memberId}/edit`} className="underline">
+          <Tr key={item.id}>
+            <Td>
+              <Link
+                href={`/gym/${gymId}/members/${item.memberId}/edit`}
+                className="font-medium text-foreground hover:text-accent"
+              >
                 {item.memberName}
               </Link>
-            </td>
-            <td className="py-2">{formatDate(item.endDate)}</td>
-          </tr>
+            </Td>
+            <Td className="text-text-secondary">{formatDate(item.endDate)}</Td>
+            <Td>
+              <Badge status="expiring-soon" />
+            </Td>
+          </Tr>
         ))}
+        {items.length === 0 && <EmptyRow colSpan={3}>No memberships expiring soon.</EmptyRow>}
       </tbody>
-    </table>
+    </Table>
   );
 }

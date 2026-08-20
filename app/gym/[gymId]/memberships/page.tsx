@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { requireGym, requireRole } from "@/lib/server/auth";
 import { listMembers } from "@/lib/server/services/members";
 import { listPlans } from "@/lib/server/services/plans";
@@ -10,6 +9,14 @@ import {
   renewMembershipAction,
   resumeMembershipAction,
 } from "./actions";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { FormSection } from "@/components/ui/FormSection";
+import { Select } from "@/components/ui/Select";
+import { Button } from "@/components/ui/Button";
+import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
+import { Badge, type BadgeStatus } from "@/components/ui/Badge";
+import { Table, Thead, Th, Td, Tr, EmptyRow } from "@/components/ui/Table";
+import { Flash } from "@/components/ui/Flash";
 
 function formatDate(date: Date): string {
   return new Date(date).toLocaleDateString();
@@ -19,28 +26,30 @@ function formatPrice(millimes: number): string {
   return (millimes / 1000).toFixed(3) + " TND";
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  ACTIVE: "Active",
-  EXPIRING_SOON: "Expiring soon",
-  EXPIRED: "Expired",
-  FROZEN: "Frozen",
-  CANCELLED: "Cancelled",
+const STATUS_BADGE: Record<string, BadgeStatus> = {
+  ACTIVE: "active",
+  EXPIRING_SOON: "expiring-soon",
+  EXPIRED: "expired",
+  FROZEN: "frozen",
+  CANCELLED: "cancelled",
 };
 
 /**
  * Gym Admin AND Gym Staff (product-spec.md §11.3) — no extra role check
  * beyond what app/gym/[gymId]/layout.tsx already requires. Cancellation is
- * the one Admin-only action here, gated inline below.
+ * the one Admin-only, genuinely irreversible action here, so it's the only
+ * one gated behind a confirmation dialog — Renew/Freeze/Resume stay plain,
+ * single-click actions since they're routine and reversible.
  */
 export default async function MembershipsPage({
   params,
   searchParams,
 }: {
   params: Promise<{ gymId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; success?: string }>;
 }) {
   const { gymId } = await params;
-  const { error } = await searchParams;
+  const { error, success } = await searchParams;
   const session = await requireGym(gymId);
   await requireRole("GYM_ADMIN", "GYM_STAFF");
 
@@ -55,134 +64,117 @@ export default async function MembershipsPage({
   const activePlans = plans.filter((p) => !p.archivedAt);
 
   return (
-    <main className="p-8">
-      <Link href={`/gym/${gymId}`} className="text-sm underline">
-        &larr; Gym
-      </Link>
-      <h1 className="mt-2 text-xl font-semibold">Memberships</h1>
+    <main className="p-6 md:p-8">
+      <PageHeader title="Memberships" backHref={`/gym/${gymId}`} backLabel="Gym" />
 
-      <section className="mt-6 max-w-sm">
-        <h2 className="text-sm font-medium">Assign a membership</h2>
-        {error && (
-          <p className="mt-2 text-sm text-red-600" role="alert">
-            {error}
-          </p>
-        )}
-        <form action={assignMembershipAction} className="mt-2 flex flex-col gap-3">
+      <FormSection title="Assign a membership" error={error}>
+        <form action={assignMembershipAction} className="flex flex-col gap-3">
           <input type="hidden" name="gymId" value={gymId} />
-          <label className="flex flex-col gap-1 text-sm">
-            Member
-            <select
-              name="memberId"
-              required
-              className="rounded border border-gray-300 px-3 py-2"
-            >
-              <option value="">Select a member</option>
-              {activeMembers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Plan
-            <select
-              name="planId"
-              required
-              className="rounded border border-gray-300 px-3 py-2"
-            >
-              <option value="">Select a plan</option>
-              {activePlans.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} — {formatPrice(p.priceMillimes)} / {p.durationDays}d
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="submit"
-            className="rounded bg-gray-900 px-3 py-2 text-white"
-          >
+          <Select label="Member" name="memberId" required defaultValue="">
+            <option value="" disabled>
+              Select a member
+            </option>
+            {activeMembers.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </Select>
+          <Select label="Plan" name="planId" required defaultValue="">
+            <option value="" disabled>
+              Select a plan
+            </option>
+            {activePlans.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} — {formatPrice(p.priceMillimes)} / {p.durationDays}d
+              </option>
+            ))}
+          </Select>
+          <Button type="submit" variant="primary">
             Assign membership
-          </button>
+          </Button>
         </form>
-      </section>
+      </FormSection>
 
       <section className="mt-8">
-        <h2 className="text-sm font-medium">All memberships</h2>
-        <table className="mt-2 w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-gray-300">
-              <th className="py-2 pr-4">Member</th>
-              <th className="py-2 pr-4">Plan</th>
-              <th className="py-2 pr-4">Start</th>
-              <th className="py-2 pr-4">End</th>
-              <th className="py-2 pr-4">Status</th>
-              <th className="py-2">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {memberships.map((m) => (
-              <tr key={m.id} className="border-b border-gray-100">
-                <td className="py-2 pr-4">{m.memberName}</td>
-                <td className="py-2 pr-4">{m.planNameSnapshot}</td>
-                <td className="py-2 pr-4">{formatDate(m.startDate)}</td>
-                <td className="py-2 pr-4">{formatDate(m.endDate)}</td>
-                <td className="py-2 pr-4">{STATUS_LABEL[m.status]}</td>
-                <td className="py-2">
-                  <div className="flex flex-wrap gap-2">
-                    {(m.status === "ACTIVE" ||
-                      m.status === "EXPIRING_SOON" ||
-                      m.status === "EXPIRED") && (
-                      <form action={renewMembershipAction}>
-                        <input type="hidden" name="gymId" value={gymId} />
-                        <input type="hidden" name="membershipId" value={m.id} />
-                        <button type="submit" className="text-sm underline">
-                          Renew
-                        </button>
-                      </form>
-                    )}
-                    {(m.status === "ACTIVE" || m.status === "EXPIRING_SOON") && (
-                      <form action={freezeMembershipAction}>
-                        <input type="hidden" name="gymId" value={gymId} />
-                        <input type="hidden" name="membershipId" value={m.id} />
-                        <button type="submit" className="text-sm underline">
-                          Freeze
-                        </button>
-                      </form>
-                    )}
-                    {m.status === "FROZEN" && (
-                      <form action={resumeMembershipAction}>
-                        <input type="hidden" name="gymId" value={gymId} />
-                        <input type="hidden" name="membershipId" value={m.id} />
-                        <button type="submit" className="text-sm underline">
-                          Resume
-                        </button>
-                      </form>
-                    )}
-                    {session.role === "GYM_ADMIN" && m.status !== "CANCELLED" && (
-                      <form action={cancelMembershipAction}>
-                        <input type="hidden" name="gymId" value={gymId} />
-                        <input type="hidden" name="membershipId" value={m.id} />
-                        <button type="submit" className="text-sm underline">
-                          Cancel
-                        </button>
-                      </form>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {memberships.length === 0 && (
+        <h2 className="text-xs font-semibold tracking-wide text-text-tertiary uppercase">
+          All memberships
+        </h2>
+        <div className="mt-3">
+          {!error && <Flash success={success} />}
+          <Table>
+            <Thead>
               <tr>
-                <td colSpan={6} className="py-4 text-gray-500">
-                  No memberships yet.
-                </td>
+                <Th>Member</Th>
+                <Th>Plan</Th>
+                <Th>Start</Th>
+                <Th>End</Th>
+                <Th>Status</Th>
+                <Th>Actions</Th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </Thead>
+            <tbody>
+              {memberships.map((m) => (
+                <Tr key={m.id}>
+                  <Td className="font-medium">{m.memberName}</Td>
+                  <Td className="text-text-secondary">{m.planNameSnapshot}</Td>
+                  <Td className="text-text-secondary">{formatDate(m.startDate)}</Td>
+                  <Td className="text-text-secondary">{formatDate(m.endDate)}</Td>
+                  <Td>
+                    <Badge status={STATUS_BADGE[m.status] ?? "active"} />
+                  </Td>
+                  <Td>
+                    <div className="flex flex-wrap gap-2">
+                      {(m.status === "ACTIVE" ||
+                        m.status === "EXPIRING_SOON" ||
+                        m.status === "EXPIRED") && (
+                        <form action={renewMembershipAction}>
+                          <input type="hidden" name="gymId" value={gymId} />
+                          <input type="hidden" name="membershipId" value={m.id} />
+                          <Button type="submit" variant="ghost">
+                            Renew
+                          </Button>
+                        </form>
+                      )}
+                      {(m.status === "ACTIVE" || m.status === "EXPIRING_SOON") && (
+                        <form action={freezeMembershipAction}>
+                          <input type="hidden" name="gymId" value={gymId} />
+                          <input type="hidden" name="membershipId" value={m.id} />
+                          <Button type="submit" variant="ghost">
+                            Freeze
+                          </Button>
+                        </form>
+                      )}
+                      {m.status === "FROZEN" && (
+                        <form action={resumeMembershipAction}>
+                          <input type="hidden" name="gymId" value={gymId} />
+                          <input type="hidden" name="membershipId" value={m.id} />
+                          <Button type="submit" variant="ghost">
+                            Resume
+                          </Button>
+                        </form>
+                      )}
+                      {session.role === "GYM_ADMIN" && m.status !== "CANCELLED" && (
+                        <form action={cancelMembershipAction}>
+                          <input type="hidden" name="gymId" value={gymId} />
+                          <input type="hidden" name="membershipId" value={m.id} />
+                          <ConfirmSubmitButton
+                            confirmTitle="Cancel this membership?"
+                            confirmMessage={`${m.memberName}'s membership will be cancelled before its natural expiry. This is a permanent historical record and cannot be undone.`}
+                            confirmLabel="Cancel membership"
+                          >
+                            Cancel
+                          </ConfirmSubmitButton>
+                        </form>
+                      )}
+                    </div>
+                  </Td>
+                </Tr>
+              ))}
+              {memberships.length === 0 && <EmptyRow colSpan={6}>No memberships yet.</EmptyRow>}
+            </tbody>
+          </Table>
+        </div>
       </section>
     </main>
   );

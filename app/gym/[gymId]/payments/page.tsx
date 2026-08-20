@@ -1,8 +1,17 @@
-import Link from "next/link";
 import { requireGym, requireRole } from "@/lib/server/auth";
 import { listMemberships } from "@/lib/server/services/memberships";
 import { gymOutstandingBalance, listPayments } from "@/lib/server/services/payments";
 import { adjustPaymentAction, recordPaymentAction, voidPaymentAction } from "./actions";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { FormSection } from "@/components/ui/FormSection";
+import { TextInput } from "@/components/ui/TextInput";
+import { Select } from "@/components/ui/Select";
+import { Button } from "@/components/ui/Button";
+import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
+import { StatCard } from "@/components/ui/StatCard";
+import { Table, Thead, Th, Td, Tr, EmptyRow } from "@/components/ui/Table";
+import { Flash } from "@/components/ui/Flash";
+import { PaymentsIcon } from "@/components/ui/icons";
 
 function formatMillimes(millimes: number): string {
   return (millimes / 1000).toFixed(3) + " TND";
@@ -28,10 +37,10 @@ export default async function PaymentsPage({
   searchParams,
 }: {
   params: Promise<{ gymId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; success?: string }>;
 }) {
   const { gymId } = await params;
-  const { error } = await searchParams;
+  const { error, success } = await searchParams;
   const session = await requireGym(gymId);
   await requireRole("GYM_ADMIN", "GYM_STAFF");
 
@@ -44,161 +53,126 @@ export default async function PaymentsPage({
     session.role === "GYM_ADMIN" ? await gymOutstandingBalance(context) : null;
 
   return (
-    <main className="p-8">
-      <Link href={`/gym/${gymId}`} className="text-sm underline">
-        &larr; Gym
-      </Link>
-      <h1 className="mt-2 text-xl font-semibold">Payments</h1>
+    <main className="p-6 md:p-8">
+      <PageHeader title="Payments" backHref={`/gym/${gymId}`} backLabel="Gym" />
+
       {outstandingBalance !== null && (
-        <p className="mt-1 text-sm text-gray-600">
-          Gym-wide outstanding balance: {formatMillimes(outstandingBalance)}
-        </p>
+        <div className="mb-6 max-w-xs">
+          <StatCard
+            label="Outstanding balance"
+            value={formatMillimes(outstandingBalance)}
+            icon={<PaymentsIcon className="h-4.5 w-4.5" />}
+            tone="warning"
+          />
+        </div>
       )}
 
-      <section className="mt-6 max-w-sm">
-        <h2 className="text-sm font-medium">Record a payment</h2>
-        {error && (
-          <p className="mt-2 text-sm text-red-600" role="alert">
-            {error}
-          </p>
-        )}
-        <form action={recordPaymentAction} className="mt-2 flex flex-col gap-3">
+      <FormSection title="Record a payment" error={error}>
+        <form action={recordPaymentAction} className="flex flex-col gap-3">
           <input type="hidden" name="gymId" value={gymId} />
-          <label className="flex flex-col gap-1 text-sm">
-            Membership
-            <select
-              name="membershipId"
-              required
-              className="rounded border border-gray-300 px-3 py-2"
-            >
-              <option value="">Select a membership</option>
-              {memberships.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.memberName} — {m.planNameSnapshot}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Amount (TND)
-            <input
-              type="number"
-              name="amount"
-              step="0.001"
-              min="0.001"
-              required
-              className="rounded border border-gray-300 px-3 py-2"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Method
-            <input
-              type="text"
-              name="method"
-              required
-              defaultValue="cash"
-              className="rounded border border-gray-300 px-3 py-2"
-            />
-          </label>
-          <button
-            type="submit"
-            className="rounded bg-gray-900 px-3 py-2 text-white"
-          >
+          <Select label="Membership" name="membershipId" required defaultValue="">
+            <option value="" disabled>
+              Select a membership
+            </option>
+            {memberships.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.memberName} — {m.planNameSnapshot}
+              </option>
+            ))}
+          </Select>
+          <TextInput label="Amount (TND)" type="number" name="amount" step="0.001" min="0.001" required />
+          <TextInput label="Method" type="text" name="method" required defaultValue="cash" />
+          <Button type="submit" variant="primary">
             Record payment
-          </button>
+          </Button>
         </form>
-      </section>
+      </FormSection>
 
       <section className="mt-8">
-        <h2 className="text-sm font-medium">All payments</h2>
-        <table className="mt-2 w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-gray-300">
-              <th className="py-2 pr-4">Date</th>
-              <th className="py-2 pr-4">Amount</th>
-              <th className="py-2 pr-4">Effective</th>
-              <th className="py-2 pr-4">Method</th>
-              <th className="py-2 pr-4">Recorded by</th>
-              <th className="py-2">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {payments.map((p) => (
-              <tr key={p.id} className="border-b border-gray-100">
-                <td className="py-2 pr-4">{formatDate(p.paidAt)}</td>
-                <td className="py-2 pr-4">{formatMillimes(p.amountMillimes)}</td>
-                <td className="py-2 pr-4">
-                  {formatMillimes(p.effectiveAmountMillimes)}
-                  {p.adjustments.length > 0 && (
-                    <span className="ml-1 text-xs text-gray-500">
-                      ({p.adjustments.length} adjustment
-                      {p.adjustments.length > 1 ? "s" : ""})
-                    </span>
-                  )}
-                </td>
-                <td className="py-2 pr-4">{p.method}</td>
-                <td className="py-2 pr-4">{p.recordedByEmail}</td>
-                <td className="py-2">
-                  {session.role === "GYM_ADMIN" && p.effectiveAmountMillimes > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      <form action={voidPaymentAction}>
-                        <input type="hidden" name="gymId" value={gymId} />
-                        <input type="hidden" name="paymentId" value={p.id} />
-                        <input
-                          type="hidden"
-                          name="effectiveAmountMillimes"
-                          value={p.effectiveAmountMillimes}
-                        />
-                        <button type="submit" className="text-sm underline">
-                          Void
-                        </button>
-                      </form>
-                      <details>
-                        <summary className="cursor-pointer text-sm underline">
-                          Adjust
-                        </summary>
-                        <form
-                          action={adjustPaymentAction}
-                          className="mt-2 flex flex-col gap-2"
-                        >
+        <h2 className="text-xs font-semibold tracking-wide text-text-tertiary uppercase">
+          All payments
+        </h2>
+        <div className="mt-3">
+          {!error && <Flash success={success} />}
+          <Table>
+            <Thead>
+              <tr>
+                <Th>Date</Th>
+                <Th>Amount</Th>
+                <Th>Effective</Th>
+                <Th>Method</Th>
+                <Th>Recorded by</Th>
+                <Th>Action</Th>
+              </tr>
+            </Thead>
+            <tbody>
+              {payments.map((p) => (
+                <Tr key={p.id}>
+                  <Td className="text-text-secondary">{formatDate(p.paidAt)}</Td>
+                  <Td className="font-medium">{formatMillimes(p.amountMillimes)}</Td>
+                  <Td>
+                    {formatMillimes(p.effectiveAmountMillimes)}
+                    {p.adjustments.length > 0 && (
+                      <span className="ml-1 text-xs text-text-tertiary">
+                        ({p.adjustments.length} adjustment
+                        {p.adjustments.length > 1 ? "s" : ""})
+                      </span>
+                    )}
+                  </Td>
+                  <Td className="text-text-secondary">{p.method}</Td>
+                  <Td className="text-text-secondary">{p.recordedByEmail}</Td>
+                  <Td>
+                    {session.role === "GYM_ADMIN" && p.effectiveAmountMillimes > 0 && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <form action={voidPaymentAction}>
                           <input type="hidden" name="gymId" value={gymId} />
                           <input type="hidden" name="paymentId" value={p.id} />
                           <input
-                            type="number"
-                            name="amount"
-                            step="0.001"
-                            required
-                            placeholder="e.g. -10.000"
-                            className="rounded border border-gray-300 px-2 py-1 text-sm"
+                            type="hidden"
+                            name="effectiveAmountMillimes"
+                            value={p.effectiveAmountMillimes}
                           />
-                          <input
-                            type="text"
-                            name="reason"
-                            placeholder="Reason (optional)"
-                            className="rounded border border-gray-300 px-2 py-1 text-sm"
-                          />
-                          <button
-                            type="submit"
-                            className="rounded bg-gray-900 px-2 py-1 text-xs text-white"
+                          <ConfirmSubmitButton
+                            confirmTitle="Void this payment?"
+                            confirmMessage="This records a full offsetting adjustment — the original payment stays in the audit trail, it is never deleted."
+                            confirmLabel="Void payment"
                           >
-                            Submit adjustment
-                          </button>
+                            Void
+                          </ConfirmSubmitButton>
                         </form>
-                      </details>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {payments.length === 0 && (
-              <tr>
-                <td colSpan={6} className="py-4 text-gray-500">
-                  No payments yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                        <details className="group">
+                          <summary className="cursor-pointer list-none rounded-lg px-3 py-2 text-sm text-text-secondary hover:bg-surface-3 hover:text-foreground">
+                            Adjust
+                          </summary>
+                          <form
+                            action={adjustPaymentAction}
+                            className="mt-2 flex flex-col gap-2 rounded-lg border border-border-subtle bg-surface-1 p-3"
+                          >
+                            <input type="hidden" name="gymId" value={gymId} />
+                            <input type="hidden" name="paymentId" value={p.id} />
+                            <TextInput
+                              label="Adjustment amount (TND)"
+                              type="number"
+                              name="amount"
+                              step="0.001"
+                              required
+                              hint="Negative to reduce, positive to add"
+                            />
+                            <TextInput label="Reason (optional)" type="text" name="reason" />
+                            <Button type="submit" variant="primary" className="self-start">
+                              Submit adjustment
+                            </Button>
+                          </form>
+                        </details>
+                      </div>
+                    )}
+                  </Td>
+                </Tr>
+              ))}
+              {payments.length === 0 && <EmptyRow colSpan={6}>No payments yet.</EmptyRow>}
+            </tbody>
+          </Table>
+        </div>
       </section>
     </main>
   );

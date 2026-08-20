@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Button } from "./Button";
 
 /**
@@ -18,6 +18,15 @@ import { Button } from "./Button";
  * still resolve to it — an added click on the dialog's Confirm button is
  * required to actually submit, which is a real, intentional interaction
  * change (not a selector break).
+ *
+ * The dialog's title/message are only mounted while `open` — this matters
+ * beyond tidiness: confirmMessage often interpolates the row's own name
+ * (e.g. "Suspend {gym.name}?"), and an always-mounted-but-hidden <dialog>
+ * would leave that same text sitting in the DOM for every row at once,
+ * which breaks plain-text queries like getByText(gymName) with a strict-
+ * mode "resolved to 2 elements" collision (found via a real, reproduced
+ * E2E failure — tests/e2e/provisioning.spec.ts's create-gym check — not
+ * assumed). Mounting only on open keeps exactly one match in the DOM.
  */
 export function ConfirmSubmitButton({
   children,
@@ -33,28 +42,39 @@ export function ConfirmSubmitButton({
   variant?: "danger" | "secondary";
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const [open, setOpen] = useState(false);
 
   return (
     <>
-      <Button type="button" variant="ghost" onClick={() => dialogRef.current?.showModal()}>
+      <Button
+        type="button"
+        variant="ghost"
+        onClick={() => {
+          setOpen(true);
+          dialogRef.current?.showModal();
+        }}
+      >
         {children}
       </Button>
       <dialog
         ref={dialogRef}
-        className="w-full max-w-sm rounded-lg border border-border-subtle bg-surface-2 p-0 text-foreground backdrop:bg-black/60"
+        onClose={() => setOpen(false)}
+        className="fixed inset-0 m-auto w-full max-w-sm rounded-lg border border-border-subtle bg-surface-2 p-0 text-foreground backdrop:bg-black/60"
       >
-        <div className="p-5">
-          <h2 className="text-base font-semibold text-foreground">{confirmTitle}</h2>
-          <p className="mt-2 text-sm text-text-secondary">{confirmMessage}</p>
-          <div className="mt-5 flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => dialogRef.current?.close()}>
-              Cancel
-            </Button>
-            <Button type="submit" variant={variant}>
-              {confirmLabel}
-            </Button>
+        {open && (
+          <div className="p-5">
+            <h2 className="text-base font-semibold text-foreground">{confirmTitle}</h2>
+            <p className="mt-2 text-sm text-text-secondary">{confirmMessage}</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => dialogRef.current?.close()}>
+                Cancel
+              </Button>
+              <Button type="submit" variant={variant}>
+                {confirmLabel}
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </dialog>
     </>
   );

@@ -33,7 +33,7 @@ export async function recordPaymentAction(formData: FormData): Promise<void> {
     redirect(`/gym/${gymId}/payments?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/payments`);
+  redirect(`/gym/${gymId}/payments?success=${encodeURIComponent("Payment recorded.")}`);
 }
 
 /** Gym Admin only — requireRole enforces this here; the RLS policy (Gym-Admin-only INSERT) enforces it independently at the database layer. */
@@ -59,7 +59,7 @@ export async function adjustPaymentAction(formData: FormData): Promise<void> {
     redirect(`/gym/${gymId}/payments?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/payments`);
+  redirect(`/gym/${gymId}/payments?success=${encodeURIComponent("Adjustment recorded.")}`);
 }
 
 /** A full void is just an adjustment for the negative of the current effective amount — same mechanism as adjustPaymentAction, a distinct action only in the UI. */
@@ -85,5 +85,5 @@ export async function voidPaymentAction(formData: FormData): Promise<void> {
     redirect(`/gym/${gymId}/payments?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/payments`);
+  redirect(`/gym/${gymId}/payments?success=${encodeURIComponent("Payment voided.")}`);
 }

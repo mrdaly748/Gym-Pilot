@@ -34,7 +34,7 @@ export async function recordExpenseAction(formData: FormData): Promise<void> {
     redirect(`/gym/${gymId}/expenses?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/expenses`);
+  redirect(`/gym/${gymId}/expenses?success=${encodeURIComponent("Expense recorded.")}`);
 }
 
 /** Gym Admin only — requireRole enforces this here; the RLS policy (Gym-Admin-only INSERT) enforces it independently at the database layer. */
@@ -60,7 +60,7 @@ export async function adjustExpenseAction(formData: FormData): Promise<void> {
     redirect(`/gym/${gymId}/expenses?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/expenses`);
+  redirect(`/gym/${gymId}/expenses?success=${encodeURIComponent("Adjustment recorded.")}`);
 }
 
 /** A full void is just an adjustment for the negative of the current effective amount — same mechanism as adjustExpenseAction, a distinct action only in the UI. */
@@ -86,5 +86,5 @@ export async function voidExpenseAction(formData: FormData): Promise<void> {
     redirect(`/gym/${gymId}/expenses?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/expenses`);
+  redirect(`/gym/${gymId}/expenses?success=${encodeURIComponent("Expense voided.")}`);
 }

@@ -1,8 +1,11 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireGym, requireRole } from "@/lib/server/auth";
 import { getTrainer } from "@/lib/server/services/trainers";
 import { updateTrainerAction } from "../../actions";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { TextInput } from "@/components/ui/TextInput";
+import { Button } from "@/components/ui/Button";
+import { Flash } from "@/components/ui/Flash";
 
 export default async function EditTrainerPage({
   params,
@@ -25,67 +28,42 @@ export default async function EditTrainerPage({
   }
 
   return (
-    <main className="p-8">
-      <Link href={`/gym/${gymId}/trainers`} className="text-sm underline">
-        &larr; Trainers
-      </Link>
-      <h1 className="mt-2 text-xl font-semibold">Edit {trainer.name}</h1>
+    <main className="p-6 md:p-8">
+      <PageHeader
+        title={`Edit ${trainer.name}`}
+        backHref={`/gym/${gymId}/trainers`}
+        backLabel="Trainers"
+      />
 
-      {error && (
-        <p className="mt-2 text-sm text-red-600" role="alert">
-          {error}
-        </p>
-      )}
-      <form
-        action={updateTrainerAction}
-        className="mt-4 flex max-w-sm flex-col gap-3"
-      >
-        <input type="hidden" name="gymId" value={gymId} />
-        <input type="hidden" name="trainerId" value={trainer.id} />
-        <label className="flex flex-col gap-1 text-sm">
-          Name
-          <input
-            type="text"
-            name="name"
-            required
-            defaultValue={trainer.name}
-            className="rounded border border-gray-300 px-3 py-2"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Contact phone (optional)
-          <input
+      <div className="max-w-sm">
+        <Flash error={error} />
+        <form action={updateTrainerAction} className="flex flex-col gap-3">
+          <input type="hidden" name="gymId" value={gymId} />
+          <input type="hidden" name="trainerId" value={trainer.id} />
+          <TextInput label="Name" type="text" name="name" required defaultValue={trainer.name} />
+          <TextInput
+            label="Contact phone (optional)"
             type="tel"
             name="contactPhone"
             defaultValue={trainer.contactPhone ?? ""}
-            className="rounded border border-gray-300 px-3 py-2"
           />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Contact email (optional)
-          <input
+          <TextInput
+            label="Contact email (optional)"
             type="email"
             name="contactEmail"
             defaultValue={trainer.contactEmail ?? ""}
-            className="rounded border border-gray-300 px-3 py-2"
           />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Specialty / notes (optional)
-          <input
+          <TextInput
+            label="Specialty / notes (optional)"
             type="text"
             name="specialty"
             defaultValue={trainer.specialty ?? ""}
-            className="rounded border border-gray-300 px-3 py-2"
           />
-        </label>
-        <button
-          type="submit"
-          className="rounded bg-gray-900 px-3 py-2 text-white"
-        >
-          Save changes
-        </button>
-      </form>
+          <Button type="submit" variant="primary">
+            Save changes
+          </Button>
+        </form>
+      </div>
     </main>
   );
 }
