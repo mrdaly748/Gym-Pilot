@@ -238,8 +238,12 @@ test("Full provisioning flow: Gym Admin, Gym Staff, and gym suspension", async (
     // 5b. Phase 8: Gym Admin's dashboard shows the full figure set,
     // including the financial totals Gym Staff must never see (checked
     // below in step 8b) — a real render, not a code-inspection claim.
+    // exact: true on "Revenue" — Phase 9.5 added a "Revenue — last 6
+    // months" chart heading alongside the StatCard, so a plain substring
+    // match is now ambiguous between two genuinely correct pieces of UI;
+    // this pins the assertion to the StatCard's own label specifically.
     await page.goto(`/gym/${gymId}/dashboard`);
-    await expect(page.getByText("Revenue")).toBeVisible();
+    await expect(page.getByText("Revenue", { exact: true })).toBeVisible();
     await expect(page.getByText("Total expenses")).toBeVisible();
     await expect(page.getByText("Outstanding payments")).toBeVisible();
     await page.goto(`/gym/${gymId}`);
