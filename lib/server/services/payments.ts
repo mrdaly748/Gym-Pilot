@@ -4,8 +4,10 @@ import { NotFoundError, ValidationError } from "@/lib/server/errors";
 import {
   effectivePaymentAmount,
   outstandingBalance,
+  planPerformance,
   revenueForPeriod,
   type AdjustmentForCalc,
+  type PlanPerformance,
 } from "@/lib/server/services/metrics";
 
 /**
@@ -250,4 +252,73 @@ export async function gymRevenueForPeriod(
     periodStart,
     periodEnd,
   );
+}
+
+export type MonthlyPeriod = { start: Date; end: Date };
+export type RevenueTrendPoint = MonthlyPeriod & { revenueMillimes: number };
+
+/**
+ * Phase 8 Analytics (product-spec.md §11.9): revenue trend — one point per
+ * caller-supplied period (the Analytics page supplies the last 6 monthly
+ * boundaries). Queries the gym's payments once, then reuses the same
+ * canonical revenueForPeriod() per period — never a second calculation,
+ * and never re-queries per period.
+ */
+export async function gymRevenueTrend(
+  context: TenantContext,
+  periods: MonthlyPeriod[],
+): Promise<RevenueTrendPoint[]> {
+  const payments = await withTenant(context, (tx) =>
+    tx.payment.findMany({
+      where: { gymId: context.gymId },
+      select: {
+        amountMillimes: true,
+        paidAt: true,
+        adjustments: { select: { amountMillimes: true, createdAt: true } },
+      },
+    }),
+  );
+  const typed = payments as {
+    amountMillimes: number;
+    paidAt: Date;
+    adjustments: AdjustmentForCalc[];
+  }[];
+  return periods.map((period) => ({
+    ...period,
+    revenueMillimes: revenueForPeriod(typed, period.start, period.end),
+  }));
+}
+
+/**
+ * Phase 8 Analytics (product-spec.md §11.9): "which plans generate the
+ * most members/revenue," scoped to the same last-6-months window as the
+ * rest of Analytics (per the approved decision, not mixed with lifetime
+ * data). Scoping is by membership startDate — the plan "generated" a
+ * member when that membership was sold — but each included membership's
+ * full payment history is summed (not further period-filtered), since an
+ * installment paid after the window closes is still revenue that
+ * membership generated. Groups by planNameSnapshot (never the live plan),
+ * per Phase 4's snapshot-integrity principle.
+ */
+export async function gymPlanPerformance(
+  context: TenantContext,
+  windowStart: Date,
+  windowEnd: Date,
+): Promise<PlanPerformance[]> {
+  const memberships = await withTenant(context, (tx) =>
+    tx.membership.findMany({
+      where: { gymId: context.gymId, startDate: { gte: windowStart, lte: windowEnd } },
+      select: {
+        planNameSnapshot: true,
+        payments: {
+          select: {
+            amountMillimes: true,
+            paidAt: true,
+            adjustments: { select: { amountMillimes: true, createdAt: true } },
+          },
+        },
+      },
+    }),
+  );
+  return planPerformance(memberships);
 }

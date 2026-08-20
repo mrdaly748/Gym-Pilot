@@ -323,3 +323,80 @@ export function newMemberCount(
   return joinDates.filter((joinDate) => isNewMember(joinDate, periodStart, periodEnd))
     .length;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 8: analytics (product-spec.md §11.9) — period-over-period
+// comparison and membership-plan performance. Trend *series* themselves
+// (revenue/expenses/attendance/membership-growth over the last 6 months)
+// need no new pure function here: each is a loop, at the service layer,
+// over the already-existing revenueForPeriod/expensesForPeriod/
+// totalCheckins/uniqueVisitors/activeMemberCount calls, one per month
+// boundary — genuinely new canonical logic lives only in the two functions
+// below.
+// ---------------------------------------------------------------------------
+
+/**
+ * Percentage change from `previous` to `current`, as a whole-number-free
+ * ratio (e.g. 0.25 for +25%) — the single canonical definition every
+ * period-over-period comparison figure uses, so "how do we handle a zero
+ * baseline" is decided once, not per call site. Rule 9's own cash-basis
+ * revenue can legitimately be zero for a brand-new gym's first period, so
+ * this is not a hypothetical edge case:
+ *   - previous = 0, current = 0  -> 0 (no change)
+ *   - previous = 0, current > 0  -> null (an undefined/infinite percentage
+ *     — "went from nothing to something" has no meaningful ratio; callers
+ *     display this as "new" rather than a fabricated number)
+ *   - previous != 0              -> (current - previous) / |previous|
+ */
+export function percentChange(previous: number, current: number): number | null {
+  if (previous === 0) {
+    return current === 0 ? 0 : null;
+  }
+  return (current - previous) / Math.abs(previous);
+}
+
+export type MembershipForPlanPerformance = {
+  planNameSnapshot: string;
+  payments: PaymentForCalc[];
+};
+
+export type PlanPerformance = {
+  planName: string;
+  memberCount: number;
+  revenueMillimes: number;
+};
+
+/**
+ * Rule 9/11: for each distinct planNameSnapshot (never the live plan's
+ * current name/id — Phase 4's snapshot design exists specifically so a
+ * later plan rename/price edit never retroactively changes how an
+ * already-sold membership is reported), the number of memberships sold
+ * under it and the total effective revenue (payments plus every
+ * adjustment's signed delta, via effectivePaymentAmount — never a
+ * replacement calculation). Sorted by revenue descending, matching the
+ * spec's own framing ("which plans generate the most members/revenue").
+ */
+export function planPerformance(
+  memberships: MembershipForPlanPerformance[],
+): PlanPerformance[] {
+  const byPlan = new Map<string, { memberCount: number; revenueMillimes: number }>();
+  for (const membership of memberships) {
+    const entry = byPlan.get(membership.planNameSnapshot) ?? {
+      memberCount: 0,
+      revenueMillimes: 0,
+    };
+    entry.memberCount += 1;
+    entry.revenueMillimes += membership.payments.reduce(
+      (sum, p) => sum + effectivePaymentAmount(p),
+      0,
+    );
+    byPlan.set(membership.planNameSnapshot, entry);
+  }
+  return [...byPlan.entries()]
+    .map(([planName, { memberCount, revenueMillimes }]) => ({
+      planName,
+      memberCount,
+      revenueMillimes,
+    }))
+    .sort((a, b) => b.revenueMillimes - a.revenueMillimes);
+}

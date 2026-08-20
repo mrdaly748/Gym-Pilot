@@ -20,6 +20,7 @@ import {
   cancelMembership,
   freezeMembership,
   gymMembershipDashboardSummary,
+  gymMembershipGrowthTrend,
   listMemberships,
   renewMembership,
   resumeMembership,
@@ -348,6 +349,75 @@ describe("Phase 4 memberships service", () => {
       expect(summary.activeMembers).toBe(0);
       expect(summary.newMembers).toBe(0);
       expect(summary.expiringSoon).toHaveLength(0);
+    });
+  });
+
+  describe("Phase 8 — gymMembershipGrowthTrend", () => {
+    it("computes the active-member count as of each period's end, reflecting expirations and new memberships", async () => {
+      const member1 = await seedMember(owner, {
+        gymId: gymA.id,
+        name: "Feb-only member",
+        phone: "20111111",
+        phoneNormalized: "20111111",
+      });
+      const member2 = await seedMember(owner, {
+        gymId: gymA.id,
+        name: "March onward member",
+        phone: "20222222",
+        phoneNormalized: "20222222",
+      });
+      const member3 = await seedMember(owner, {
+        gymId: gymA.id,
+        name: "April onward member",
+        phone: "20333333",
+        phoneNormalized: "20333333",
+      });
+
+      await seedMembershipRecord(owner, {
+        gymId: gymA.id,
+        memberId: member1.id,
+        planId: planA.id,
+        startDate: new Date("2026-02-01"),
+        endDate: new Date("2026-03-15"),
+      });
+      await seedMembershipRecord(owner, {
+        gymId: gymA.id,
+        memberId: member2.id,
+        planId: planA.id,
+        startDate: new Date("2026-03-01"),
+        endDate: new Date("2026-06-01"),
+      });
+      await seedMembershipRecord(owner, {
+        gymId: gymA.id,
+        memberId: member3.id,
+        planId: planA.id,
+        startDate: new Date("2026-04-01"),
+        endDate: new Date("2026-07-01"),
+      });
+
+      const periods = [
+        { start: new Date("2026-02-01"), end: new Date("2026-02-28T23:59:59.999") },
+        { start: new Date("2026-03-01"), end: new Date("2026-03-31T23:59:59.999") },
+        { start: new Date("2026-04-01"), end: new Date("2026-04-30T23:59:59.999") },
+      ];
+      const trend = await gymMembershipGrowthTrend(adminContext(), periods);
+      expect(trend).toHaveLength(3);
+      expect(trend[0].activeMembers).toBe(1); // Feb: only member1
+      expect(trend[1].activeMembers).toBe(1); // Mar: member1 expired, member2 active
+      expect(trend[2].activeMembers).toBe(2); // Apr: member2 and member3 both active
+    });
+
+    it("a gym cannot see another gym's membership growth trend", async () => {
+      await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id });
+      const adminB = await seedUser(owner, "admin-b@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+
+      const now = new Date();
+      const trend = await gymMembershipGrowthTrend(
+        { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" },
+        [{ start: new Date(now.getFullYear(), now.getMonth(), 1), end: now }],
+      );
+      expect(trend[0].activeMembers).toBe(0);
     });
   });
 });

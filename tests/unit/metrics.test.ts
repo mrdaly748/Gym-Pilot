@@ -12,6 +12,8 @@ import {
   effectiveExpenseAmount,
   newMemberCount,
   outstandingBalance,
+  percentChange,
+  planPerformance,
   revenueForPeriod,
   totalCheckins,
   uniqueVisitors,
@@ -500,5 +502,102 @@ describe("newMemberCount", () => {
       new Date("2026-04-01"),
     ];
     expect(newMemberCount(joinDates, march.start, march.end)).toBe(3);
+  });
+});
+
+describe("percentChange", () => {
+  it("positive change", () => {
+    expect(percentChange(100, 150)).toBe(0.5);
+  });
+
+  it("negative change", () => {
+    expect(percentChange(200, 100)).toBe(-0.5);
+  });
+
+  it("zero change", () => {
+    expect(percentChange(100, 100)).toBe(0);
+  });
+
+  it("previous zero, current zero -> zero (no change)", () => {
+    expect(percentChange(0, 0)).toBe(0);
+  });
+
+  it("previous zero, current positive -> null (undefined ratio, not a fabricated number)", () => {
+    expect(percentChange(0, 500)).toBeNull();
+  });
+
+  it("uses the absolute value of previous as the denominator (a negative baseline still yields a sane ratio)", () => {
+    expect(percentChange(-100, -50)).toBe(0.5);
+  });
+});
+
+describe("planPerformance", () => {
+  function membershipWithPayments(
+    planNameSnapshot: string,
+    payments: { amountMillimes: number; adjustments?: { amountMillimes: number; createdAt: Date }[] }[],
+  ) {
+    return {
+      planNameSnapshot,
+      payments: payments.map((p) => ({
+        amountMillimes: p.amountMillimes,
+        paidAt: new Date("2026-03-01"),
+        adjustments: p.adjustments ?? [],
+      })),
+    };
+  }
+
+  it("empty membership list yields an empty result", () => {
+    expect(planPerformance([])).toEqual([]);
+  });
+
+  it("groups multiple memberships under the same planNameSnapshot", () => {
+    const result = planPerformance([
+      membershipWithPayments("Monthly", [{ amountMillimes: 50000 }]),
+      membershipWithPayments("Monthly", [{ amountMillimes: 50000 }]),
+      membershipWithPayments("Annual", [{ amountMillimes: 500000 }]),
+    ]);
+    expect(result).toHaveLength(2);
+    const monthly = result.find((r) => r.planName === "Monthly")!;
+    expect(monthly.memberCount).toBe(2);
+    expect(monthly.revenueMillimes).toBe(100000);
+  });
+
+  it("revenue includes adjustments/voids, not just the original payment amount", () => {
+    const result = planPerformance([
+      membershipWithPayments("Monthly", [
+        {
+          amountMillimes: 50000,
+          adjustments: [{ amountMillimes: -20000, createdAt: new Date("2026-03-10") }],
+        },
+      ]),
+    ]);
+    expect(result[0].revenueMillimes).toBe(30000);
+  });
+
+  it("a fully-voided payment contributes zero revenue but still counts the member", () => {
+    const result = planPerformance([
+      membershipWithPayments("Monthly", [
+        {
+          amountMillimes: 50000,
+          adjustments: [{ amountMillimes: -50000, createdAt: new Date("2026-03-10") }],
+        },
+      ]),
+    ]);
+    expect(result[0].memberCount).toBe(1);
+    expect(result[0].revenueMillimes).toBe(0);
+  });
+
+  it("sorts by revenue descending", () => {
+    const result = planPerformance([
+      membershipWithPayments("Small", [{ amountMillimes: 1000 }]),
+      membershipWithPayments("Big", [{ amountMillimes: 900000 }]),
+    ]);
+    expect(result.map((r) => r.planName)).toEqual(["Big", "Small"]);
+  });
+
+  it("a membership with no payments yet still counts toward memberCount with zero revenue", () => {
+    const result = planPerformance([membershipWithPayments("Monthly", [])]);
+    expect(result[0].memberCount).toBe(1);
+    expect(result[0].revenueMillimes).toBe(0);
   });
 });

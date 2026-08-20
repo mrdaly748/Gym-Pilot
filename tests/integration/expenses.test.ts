@@ -13,6 +13,7 @@ import { prisma } from "@/lib/server/db";
 import {
   adjustExpense,
   gymExpensesForPeriod,
+  gymExpensesTrend,
   listExpenses,
   recordExpense,
 } from "@/lib/server/services/expenses";
@@ -224,6 +225,49 @@ describe("Phase 7 expenses service", () => {
         new Date("2026-03-31"),
       );
       expect(gymBTotal).toBe(0);
+    });
+  });
+
+  describe("Phase 8 — gymExpensesTrend", () => {
+    it("returns one point per period with exact hand-computed totals, including a later cross-period adjustment", async () => {
+      const { id: expenseId } = await recordExpense(adminContext(), {
+        category: "rent",
+        amountMillimes: 10000,
+        expenseDate: new Date("2026-03-15"),
+      });
+      await recordExpense(adminContext(), {
+        category: "equipment",
+        amountMillimes: 5000,
+        expenseDate: new Date("2026-04-10"),
+      });
+      await withOwnerCreatedAt(owner, expenseId); // -2000 in April, per the helper below
+
+      const periods = [
+        { start: new Date("2026-03-01"), end: new Date("2026-03-31T23:59:59.999") },
+        { start: new Date("2026-04-01"), end: new Date("2026-04-30T23:59:59.999") },
+        { start: new Date("2026-05-01"), end: new Date("2026-05-31T23:59:59.999") },
+      ];
+      const trend = await gymExpensesTrend(adminContext(), periods);
+      expect(trend).toHaveLength(3);
+      expect(trend[0].expensesMillimes).toBe(10000);
+      expect(trend[1].expensesMillimes).toBe(3000);
+      expect(trend[2].expensesMillimes).toBe(0);
+    });
+
+    it("a gym cannot see another gym's expenses trend", async () => {
+      await recordExpense(adminContext(), {
+        category: "rent",
+        amountMillimes: 10000,
+        expenseDate: new Date("2026-03-15"),
+      });
+      const adminB = await seedUser(owner, "admin-b@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+
+      const trend = await gymExpensesTrend(
+        { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" },
+        [{ start: new Date("2026-03-01"), end: new Date("2026-03-31T23:59:59.999") }],
+      );
+      expect(trend[0].expensesMillimes).toBe(0);
     });
   });
 });

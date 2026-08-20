@@ -379,3 +379,45 @@ export async function gymMembershipDashboardSummary(
     };
   });
 }
+
+export type MonthlyPeriod = { start: Date; end: Date };
+export type MembershipGrowthTrendPoint = MonthlyPeriod & { activeMembers: number };
+
+/**
+ * Phase 8 Analytics (product-spec.md §11.9): "membership growth" — the
+ * active-member trajectory, not a bare new-joins count (per the approved
+ * decision: a count of new joins alone doesn't capture churn from
+ * expirations/cancellations, so it wouldn't faithfully represent
+ * "growth"). One point per caller-supplied period, each computed as the
+ * active-member count as of that period's end — reusing
+ * activeMemberCount() with a different `now` per point, exactly as that
+ * function's own signature already supports; no new pure function needed.
+ * Queries every membership once, not once per period.
+ *
+ * deriveMembershipStatus() (Phase 4, unmodified) never checks whether
+ * `now >= startDate` — every prior caller only ever evaluates it at the
+ * real current instant, where a membership's startDate is always already
+ * in the past, so this was never reachable before. This is the first
+ * caller to evaluate status at *historical* `now` values, which can
+ * legitimately precede a membership's startDate — so a not-yet-started
+ * membership is filtered out here, at this call site only, rather than by
+ * changing the canonical status function itself.
+ */
+export async function gymMembershipGrowthTrend(
+  context: TenantContext,
+  periods: MonthlyPeriod[],
+): Promise<MembershipGrowthTrendPoint[]> {
+  const memberships = await withTenant(context, (tx) =>
+    tx.membership.findMany({
+      where: { gymId: context.gymId },
+      select: MEMBERSHIP_SELECT,
+    }),
+  );
+  return periods.map((period) => ({
+    ...period,
+    activeMembers: activeMemberCount(
+      memberships.filter((m) => m.startDate <= period.end),
+      period.end,
+    ),
+  }));
+}

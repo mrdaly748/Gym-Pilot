@@ -263,3 +263,35 @@ export async function gymAttendanceMetrics(
     uniqueVisitors: uniqueVisitors(rows, periodStart, periodEnd),
   };
 }
+
+export type MonthlyPeriod = { start: Date; end: Date };
+export type AttendanceTrendPoint = MonthlyPeriod & AttendanceMetrics;
+
+/**
+ * Phase 8 Analytics (product-spec.md §11.9): attendance trend — one point
+ * per caller-supplied period. Queries check-ins once across the whole
+ * caller-supplied window (not once per period), then reuses the same
+ * canonical totalCheckins()/uniqueVisitors() per period.
+ */
+export async function gymAttendanceTrend(
+  context: TenantContext,
+  periods: MonthlyPeriod[],
+): Promise<AttendanceTrendPoint[]> {
+  if (periods.length === 0) {
+    return [];
+  }
+  const windowStart = periods[0].start;
+  const windowEnd = periods[periods.length - 1].end;
+
+  const rows = await withTenant(context, (tx) =>
+    tx.attendanceCheckin.findMany({
+      where: { gymId: context.gymId, checkedInAt: { gte: windowStart, lte: windowEnd } },
+      select: { memberId: true, checkedInAt: true },
+    }),
+  );
+  return periods.map((period) => ({
+    ...period,
+    totalCheckins: totalCheckins(rows, period.start, period.end),
+    uniqueVisitors: uniqueVisitors(rows, period.start, period.end),
+  }));
+}

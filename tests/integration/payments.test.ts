@@ -18,7 +18,9 @@ import { prisma } from "@/lib/server/db";
 import {
   adjustPayment,
   gymOutstandingBalance,
+  gymPlanPerformance,
   gymRevenueForPeriod,
+  gymRevenueTrend,
   listPayments,
   recordPayment,
 } from "@/lib/server/services/payments";
@@ -277,6 +279,119 @@ describe("Phase 5 payments service", () => {
 
       const gymBPayments = await listPayments({ userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
       expect(gymBPayments).toHaveLength(0);
+    });
+  });
+
+  describe("Phase 8 — gymRevenueTrend", () => {
+    it("returns one point per period with exact hand-computed revenue, including a later cross-period adjustment", async () => {
+      const { id: paymentId } = await recordPayment(adminContext(), {
+        membershipId,
+        amountMillimes: 10000,
+        method: "cash",
+        paidAt: new Date("2026-03-15"),
+      });
+      await recordPayment(adminContext(), {
+        membershipId,
+        amountMillimes: 5000,
+        method: "cash",
+        paidAt: new Date("2026-04-10"),
+      });
+      await withOwnerCreatedAt(owner, paymentId); // -2000 in April, per the helper below
+
+      const periods = [
+        { start: new Date("2026-03-01"), end: new Date("2026-03-31T23:59:59.999") },
+        { start: new Date("2026-04-01"), end: new Date("2026-04-30T23:59:59.999") },
+        { start: new Date("2026-05-01"), end: new Date("2026-05-31T23:59:59.999") },
+      ];
+      const trend = await gymRevenueTrend(adminContext(), periods);
+      expect(trend).toHaveLength(3);
+      expect(trend[0].revenueMillimes).toBe(10000); // March: only the original payment
+      expect(trend[1].revenueMillimes).toBe(3000); // April: 5000 payment - 2000 adjustment
+      expect(trend[2].revenueMillimes).toBe(0); // May: nothing recorded
+    });
+
+    it("a gym cannot see another gym's revenue trend", async () => {
+      await recordPayment(adminContext(), {
+        membershipId,
+        amountMillimes: 10000,
+        method: "cash",
+        paidAt: new Date("2026-03-15"),
+      });
+      const adminB = await seedUser(owner, "admin-b@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+
+      const trend = await gymRevenueTrend(
+        { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" },
+        [{ start: new Date("2026-03-01"), end: new Date("2026-03-31T23:59:59.999") }],
+      );
+      expect(trend[0].revenueMillimes).toBe(0);
+    });
+  });
+
+  describe("Phase 8 — gymPlanPerformance", () => {
+    it("groups by planNameSnapshot, sums effective revenue, scoped to memberships started within the window", async () => {
+      const planB = await seedPlan(owner, {
+        gymId: gymA.id,
+        name: "Annual",
+        priceMillimes: 500000,
+        durationDays: 365,
+      });
+      const memberC = await seedMember(owner, {
+        gymId: gymA.id,
+        name: "Second member",
+        phone: "20777777",
+        phoneNormalized: "20777777",
+      });
+      // memberA's Monthly membership (from beforeEach, membershipId) starts "now".
+      const { id: annualMembershipId } = await assignMembership(adminContext(), {
+        memberId: memberC.id,
+        planId: planB.id,
+      });
+
+      await recordPayment(adminContext(), { membershipId, amountMillimes: 50000, method: "cash" });
+      await recordPayment(adminContext(), {
+        membershipId: annualMembershipId,
+        amountMillimes: 500000,
+        method: "cash",
+      });
+
+      const windowStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const windowEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const performance = await gymPlanPerformance(adminContext(), windowStart, windowEnd);
+
+      expect(performance).toHaveLength(2);
+      const monthly = performance.find((p) => p.planName === "Monthly")!;
+      const annual = performance.find((p) => p.planName === "Annual")!;
+      expect(monthly.memberCount).toBe(1);
+      expect(monthly.revenueMillimes).toBe(50000);
+      expect(annual.memberCount).toBe(1);
+      expect(annual.revenueMillimes).toBe(500000);
+      // Sorted by revenue descending.
+      expect(performance[0].planName).toBe("Annual");
+    });
+
+    it("excludes memberships started outside the window", async () => {
+      // memberA's membership (from beforeEach) starts "now" — well outside a
+      // window entirely in the past.
+      await recordPayment(adminContext(), { membershipId, amountMillimes: 50000, method: "cash" });
+
+      const windowStart = new Date("2020-01-01");
+      const windowEnd = new Date("2020-01-31");
+      const performance = await gymPlanPerformance(adminContext(), windowStart, windowEnd);
+      expect(performance).toHaveLength(0);
+    });
+
+    it("a gym cannot see another gym's plan performance", async () => {
+      await recordPayment(adminContext(), { membershipId, amountMillimes: 50000, method: "cash" });
+      const adminB = await seedUser(owner, "admin-b@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+
+      const performance = await gymPlanPerformance(
+        { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" },
+        new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+        new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      );
+      expect(performance).toHaveLength(0);
     });
   });
 });

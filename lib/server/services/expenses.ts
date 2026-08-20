@@ -248,3 +248,36 @@ export async function gymExpensesForPeriod(
     periodEnd,
   );
 }
+
+export type MonthlyPeriod = { start: Date; end: Date };
+export type ExpensesTrendPoint = MonthlyPeriod & { expensesMillimes: number };
+
+/**
+ * Phase 8 Analytics (product-spec.md §11.9): expenses trend — the
+ * expense-side counterpart of payments.ts#gymRevenueTrend, same
+ * query-once-compose-per-period shape.
+ */
+export async function gymExpensesTrend(
+  context: TenantContext,
+  periods: MonthlyPeriod[],
+): Promise<ExpensesTrendPoint[]> {
+  const expenses = await withTenant(context, (tx) =>
+    tx.expense.findMany({
+      where: { gymId: context.gymId },
+      select: {
+        amountMillimes: true,
+        expenseDate: true,
+        adjustments: { select: { amountMillimes: true, createdAt: true } },
+      },
+    }),
+  );
+  const typed = expenses as {
+    amountMillimes: number;
+    expenseDate: Date;
+    adjustments: ExpenseAdjustmentForCalc[];
+  }[];
+  return periods.map((period) => ({
+    ...period,
+    expensesMillimes: expensesForPeriod(typed, period.start, period.end),
+  }));
+}

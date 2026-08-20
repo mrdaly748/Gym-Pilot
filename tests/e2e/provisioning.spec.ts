@@ -244,6 +244,17 @@ test("Full provisioning flow: Gym Admin, Gym Staff, and gym suspension", async (
     await expect(page.getByText("Outstanding payments")).toBeVisible();
     await page.goto(`/gym/${gymId}`);
 
+    // 5c. Phase 8 Analytics: Gym Admin can reach /analytics and it renders
+    // the expected sections (trends, comparison, plan performance) — a
+    // real render, checked again for Gym Staff's exclusion in step 8c.
+    await page.goto(`/gym/${gymId}/analytics`);
+    await expect(page).toHaveURL(`/gym/${gymId}/analytics`);
+    await expect(page.getByRole("heading", { name: "Analytics" })).toBeVisible();
+    await expect(page.getByText("This month vs. last month")).toBeVisible();
+    await expect(page.getByText("Revenue trend")).toBeVisible();
+    await expect(page.getByText(/Plan performance/)).toBeVisible();
+    await page.goto(`/gym/${gymId}`);
+
     // 6. Gym Admin creates Gym Staff.
     await page.goto(`/gym/${gymId}/staff`);
     await page.getByLabel("Staff email").fill(staffEmail);
@@ -280,6 +291,14 @@ test("Full provisioning flow: Gym Admin, Gym Staff, and gym suspension", async (
     await expect(page.getByText("Total expenses")).toHaveCount(0);
     await expect(page.getByText("Outstanding payments")).toHaveCount(0);
     await page.goto(`/gym/${gymId}`);
+
+    // 8c. Phase 8 Analytics: Gym Staff attempting /analytics directly is
+    // redirected straight back to the gym home page (product-spec.md
+    // §11.9: "Gym Admin-only in MVP") — not rendered with an
+    // authorization error, matching the approved redirect behavior and
+    // the same pattern already proven for /staff in step 8.
+    await page.goto(`/gym/${gymId}/analytics`);
+    await expect(page).toHaveURL(`/gym/${gymId}`);
 
     await logout(page);
 

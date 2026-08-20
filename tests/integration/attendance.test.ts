@@ -20,6 +20,7 @@ import {
   correctCheckin,
   deleteCheckin,
   gymAttendanceMetrics,
+  gymAttendanceTrend,
   listCheckins,
   recordCheckin,
 } from "@/lib/server/services/attendance";
@@ -274,6 +275,64 @@ describe("Phase 6 attendance service", () => {
 
       const gymBCheckins = await listCheckins({ userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
       expect(gymBCheckins).toHaveLength(0);
+    });
+  });
+
+  describe("Phase 8 — gymAttendanceTrend", () => {
+    it("returns one point per period with exact hand-computed totals/unique-visitor counts", async () => {
+      const memberC = await seedMember(owner, {
+        gymId: gymA.id,
+        name: "Other",
+        phone: "20777777",
+        phoneNormalized: "20777777",
+      });
+      await seedCheckin(owner, {
+        gymId: gymA.id,
+        memberId: memberA.id,
+        checkedInAt: new Date("2026-03-05"),
+        recordedByUserId: adminA.id,
+      });
+      await seedCheckin(owner, {
+        gymId: gymA.id,
+        memberId: memberA.id,
+        checkedInAt: new Date("2026-03-10"),
+        recordedByUserId: adminA.id,
+      });
+      await seedCheckin(owner, {
+        gymId: gymA.id,
+        memberId: memberC.id,
+        checkedInAt: new Date("2026-04-01"),
+        recordedByUserId: adminA.id,
+      });
+
+      const periods = [
+        { start: new Date("2026-03-01"), end: new Date("2026-03-31T23:59:59.999") },
+        { start: new Date("2026-04-01"), end: new Date("2026-04-30T23:59:59.999") },
+        { start: new Date("2026-05-01"), end: new Date("2026-05-31T23:59:59.999") },
+      ];
+      const trend = await gymAttendanceTrend(adminContext(), periods);
+      expect(trend).toHaveLength(3);
+      expect(trend[0]).toMatchObject({ totalCheckins: 2, uniqueVisitors: 1 });
+      expect(trend[1]).toMatchObject({ totalCheckins: 1, uniqueVisitors: 1 });
+      expect(trend[2]).toMatchObject({ totalCheckins: 0, uniqueVisitors: 0 });
+    });
+
+    it("an empty periods array returns an empty trend", async () => {
+      const trend = await gymAttendanceTrend(adminContext(), []);
+      expect(trend).toEqual([]);
+    });
+
+    it("a gym cannot see another gym's attendance trend", async () => {
+      await recordCheckin(adminContext(), memberA.id);
+      const adminB = await seedUser(owner, "admin-b@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+
+      const now = new Date();
+      const trend = await gymAttendanceTrend(
+        { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" },
+        [{ start: new Date(now.getFullYear(), now.getMonth(), 1), end: now }],
+      );
+      expect(trend[0].totalCheckins).toBe(0);
     });
   });
 });
