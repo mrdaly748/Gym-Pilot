@@ -30,7 +30,7 @@ export default function Chat() {
 
   return (
     <div className="mt-6 flex max-w-2xl flex-col gap-4">
-      <div className="flex min-h-[200px] flex-col gap-4 rounded border border-gray-200 p-4">
+      <div className="flex min-h-50 flex-col gap-4 rounded border border-gray-200 p-4">
         {messages.length === 0 && (
           <p className="text-sm text-gray-500">
             Ask a question about your gym&rsquo;s members, revenue, expenses,
