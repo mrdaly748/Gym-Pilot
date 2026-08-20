@@ -215,6 +215,25 @@ export function AnalyticsIcon(props: IconProps) {
   );
 }
 
+export function CheckCircleIcon(props: IconProps) {
+  return (
+    <svg {...baseProps(props)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8.5 12.5l2.3 2.3L15.5 9.5" />
+    </svg>
+  );
+}
+
+export function PauseCircleIcon(props: IconProps) {
+  return (
+    <svg {...baseProps(props)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M10 9v6" />
+      <path d="M14 9v6" />
+    </svg>
+  );
+}
+
 export function GymsIcon(props: IconProps) {
   return (
     <svg {...baseProps(props)}>

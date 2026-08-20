@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { Badge } from "@/components/ui/Badge";
 import { Table, Thead, Th, Td, Tr, EmptyRow } from "@/components/ui/Table";
+import { GymsIcon } from "@/components/ui/icons";
 
 /**
  * Role/authentication is already guarded by app/platform/layout.tsx
@@ -29,7 +30,12 @@ export default async function PlatformGymsPage({
 
   return (
     <main className="p-6 md:p-8">
-      <PageHeader title="Gyms" backHref="/platform" backLabel="Platform Admin" />
+      <PageHeader
+        title="Gyms"
+        backHref="/platform"
+        backLabel="Platform Admin"
+        description="Provision new gym accounts and manage access for existing ones."
+      />
 
       <FormSection title="Create a gym" error={error}>
         <form action={createGymAction} className="flex flex-col gap-3">
@@ -42,9 +48,14 @@ export default async function PlatformGymsPage({
       </FormSection>
 
       <section className="mt-8">
-        <h2 className="text-xs font-semibold tracking-wide text-text-tertiary uppercase">
-          All gyms
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-semibold tracking-wide text-text-tertiary uppercase">
+            All gyms
+          </h2>
+          <span className="text-xs text-text-tertiary">
+            {gyms.length} {gyms.length === 1 ? "gym" : "gyms"}
+          </span>
+        </div>
         <div className="mt-3">
           <Table>
             <Thead>
@@ -86,7 +97,14 @@ export default async function PlatformGymsPage({
                   </Td>
                 </Tr>
               ))}
-              {gyms.length === 0 && <EmptyRow colSpan={4}>No gyms yet.</EmptyRow>}
+              {gyms.length === 0 && (
+                <EmptyRow colSpan={4}>
+                  <div className="flex flex-col items-center gap-2">
+                    <GymsIcon className="h-6 w-6 text-text-tertiary" />
+                    <span>No gyms yet. Create the first one above to get started.</span>
+                  </div>
+                </EmptyRow>
+              )}
             </tbody>
           </Table>
         </div>
