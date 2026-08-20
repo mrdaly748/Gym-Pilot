@@ -1,9 +1,13 @@
 import { redirect } from "next/navigation";
 import { requireGym, requireRole } from "@/lib/server/auth";
+import { GymNav } from "@/components/GymNav";
 
 /**
- * Route-guard shell only — no feature pages yet (Phase 3+ builds
- * members/memberships/payments/etc). See docs/implementation-plan.md Phase 1.
+ * Route-guard shell + persistent nav (Phase 9.5). GymNav is presentation
+ * only — it receives the already-verified role below and renders links;
+ * every route it links to still enforces its own requireRole() check
+ * independently (see each page.tsx), so hiding a link here changes nothing
+ * about what's actually authorized.
  */
 export default async function GymLayout({
   children,
@@ -14,12 +18,18 @@ export default async function GymLayout({
 }) {
   const { gymId } = await params;
 
+  let session;
   try {
-    await requireGym(gymId);
+    session = await requireGym(gymId);
     await requireRole("GYM_ADMIN", "GYM_STAFF");
   } catch {
     redirect("/login");
   }
 
-  return <div className="flex min-h-full flex-1 flex-col">{children}</div>;
+  return (
+    <div className="flex min-h-full flex-1 flex-col md:flex-row">
+      <GymNav gymId={gymId} role={session.role} />
+      <div className="flex-1 md:overflow-y-auto">{children}</div>
+    </div>
+  );
 }

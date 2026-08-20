@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/server/auth";
+import { PlatformNav } from "@/components/PlatformNav";
 
 /**
- * Route-guard shell only — no feature pages yet (Phase 2 builds gym
- * provisioning). See docs/implementation-plan.md Phase 1.
+ * Route-guard shell + nav (Phase 9.5). See app/gym/[gymId]/layout.tsx's
+ * equivalent comment — same "presentation only" reasoning applies here.
  */
 export default async function PlatformLayout({
   children,
@@ -16,5 +17,10 @@ export default async function PlatformLayout({
     redirect("/login");
   }
 
-  return <div className="flex min-h-full flex-1 flex-col">{children}</div>;
+  return (
+    <div className="flex min-h-full flex-1 flex-col">
+      <PlatformNav />
+      <div className="flex-1">{children}</div>
+    </div>
+  );
 }

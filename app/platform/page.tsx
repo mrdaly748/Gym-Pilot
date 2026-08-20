@@ -1,18 +1,13 @@
-import Link from "next/link";
-import { logoutAction } from "@/app/(auth)/actions";
+import { PageHeader } from "@/components/ui/PageHeader";
 
+/**
+ * Navigation (including logout) lives in the persistent PlatformNav shell
+ * rendered by app/platform/layout.tsx (Phase 9.5).
+ */
 export default function PlatformHomePage() {
   return (
-    <main className="p-8">
-      <h1 className="text-xl font-semibold">Platform Admin</h1>
-      <Link href="/platform/gyms" className="mt-4 block text-sm underline">
-        Manage gyms
-      </Link>
-      <form action={logoutAction}>
-        <button type="submit" className="mt-4 text-sm underline">
-          Log out
-        </button>
-      </form>
+    <main className="p-6 md:p-8">
+      <PageHeader title="Platform Admin" description="Use the navigation to manage gym accounts." />
     </main>
   );
 }
