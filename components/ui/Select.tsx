@@ -8,7 +8,7 @@ type SelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
 export function Select({ label, className = "", children, ...props }: SelectProps) {
   return (
     <label className="flex flex-col gap-1.5 text-sm">
-      <span className="font-medium text-gray-700">{label}</span>
+      <span className="font-medium text-text-secondary">{label}</span>
       <select {...props} className={`${FIELD_CLASSES} ${className}`}>
         {children}
       </select>

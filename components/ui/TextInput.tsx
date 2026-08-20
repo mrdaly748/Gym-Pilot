@@ -6,7 +6,7 @@ type TextInputProps = InputHTMLAttributes<HTMLInputElement> & {
 };
 
 const FIELD_CLASSES =
-  "rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20";
+  "rounded-lg border border-border-subtle bg-surface-2 px-3 py-2 text-sm text-foreground placeholder:text-text-tertiary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25";
 
 /**
  * Label wraps the input (implicit label association) — same accessible
@@ -16,9 +16,9 @@ const FIELD_CLASSES =
 export function TextInput({ label, hint, className = "", ...props }: TextInputProps) {
   return (
     <label className="flex flex-col gap-1.5 text-sm">
-      <span className="font-medium text-gray-700">{label}</span>
+      <span className="font-medium text-text-secondary">{label}</span>
       <input {...props} className={`${FIELD_CLASSES} ${className}`} />
-      {hint && <span className="text-xs text-gray-500">{hint}</span>}
+      {hint && <span className="text-xs text-text-tertiary">{hint}</span>}
     </label>
   );
 }

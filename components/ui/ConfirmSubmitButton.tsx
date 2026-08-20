@@ -41,11 +41,11 @@ export function ConfirmSubmitButton({
       </Button>
       <dialog
         ref={dialogRef}
-        className="w-full max-w-sm rounded-lg border border-gray-200 p-0 backdrop:bg-gray-900/40"
+        className="w-full max-w-sm rounded-lg border border-border-subtle bg-surface-2 p-0 text-foreground backdrop:bg-black/60"
       >
         <div className="p-5">
-          <h2 className="text-base font-semibold text-gray-900">{confirmTitle}</h2>
-          <p className="mt-2 text-sm text-gray-600">{confirmMessage}</p>
+          <h2 className="text-base font-semibold text-foreground">{confirmTitle}</h2>
+          <p className="mt-2 text-sm text-text-secondary">{confirmMessage}</p>
           <div className="mt-5 flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => dialogRef.current?.close()}>
               Cancel

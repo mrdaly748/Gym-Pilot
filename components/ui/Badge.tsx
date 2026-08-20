@@ -11,10 +11,10 @@ export type BadgeStatus =
 const STATUS_STYLES: Record<BadgeStatus, string> = {
   active: "bg-success-bg text-success-text",
   "expiring-soon": "bg-warning-bg text-warning-text",
-  expired: "bg-gray-100 text-gray-600",
+  expired: "bg-surface-3 text-text-secondary",
   frozen: "bg-warning-bg text-warning-text",
-  cancelled: "bg-gray-100 text-gray-600",
-  archived: "bg-gray-100 text-gray-600",
+  cancelled: "bg-surface-3 text-text-secondary",
+  archived: "bg-surface-3 text-text-secondary",
   suspended: "bg-danger-bg text-danger-text",
   disabled: "bg-danger-bg text-danger-text",
 };

@@ -7,10 +7,10 @@ import { SpinnerIcon } from "./icons";
 type Variant = "primary" | "secondary" | "danger" | "ghost";
 
 const VARIANT_CLASSES: Record<Variant, string> = {
-  primary: "bg-accent text-accent-foreground hover:bg-accent-hover",
-  secondary: "border border-gray-300 bg-white text-gray-900 hover:bg-gray-50",
-  danger: "bg-danger text-white hover:bg-danger-hover",
-  ghost: "text-gray-600 hover:text-gray-900 hover:underline underline-offset-2",
+  primary: "bg-accent-strong text-accent-foreground hover:bg-accent-strong-hover",
+  secondary: "border border-border-subtle bg-surface-2 text-foreground hover:bg-surface-3",
+  danger: "bg-danger-strong text-white hover:bg-danger-strong-hover",
+  ghost: "text-text-secondary hover:bg-surface-3 hover:text-foreground",
 };
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {

@@ -27,8 +27,10 @@ export function NavLink({
     <Link
       href={href}
       aria-current={isActive ? "page" : undefined}
-      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-        isActive ? "bg-accent/10 text-accent" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+      className={`flex items-center gap-3 rounded-r-lg border-l-2 py-2 pr-3 pl-2.5 text-sm font-medium transition-colors ${
+        isActive
+          ? "border-accent bg-accent-soft-bg text-accent"
+          : "border-transparent text-text-secondary hover:bg-surface-3 hover:text-foreground"
       }`}
     >
       {icon}

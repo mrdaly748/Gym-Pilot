@@ -41,15 +41,15 @@ export function GymNav({ gymId, role }: { gymId: string; role: Role }) {
   const isAdmin = role === "GYM_ADMIN";
 
   return (
-    <nav className="border-b border-gray-200 bg-white md:flex md:min-h-full md:w-60 md:shrink-0 md:flex-col md:border-r md:border-b-0">
-      <div className="flex items-center justify-between px-4 py-3.5 md:border-b md:border-gray-200">
-        <Link href={`/gym/${gymId}`} className="flex items-center gap-2 text-gray-900">
-          <LogoMark className="h-6 w-6 text-accent" />
+    <nav className="border-b border-border-subtle bg-surface-1 md:flex md:min-h-full md:w-60 md:shrink-0 md:flex-col md:border-r md:border-b-0">
+      <div className="flex items-center justify-between px-4 py-3.5 md:border-b md:border-border-subtle">
+        <Link href={`/gym/${gymId}`} className="flex items-center gap-2.5 text-foreground">
+          <LogoMark className="h-8 w-8" />
           <span className="text-base font-semibold tracking-tight">GymPilot</span>
         </Link>
         <label
           htmlFor="gym-nav-toggle"
-          className="cursor-pointer rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 md:hidden"
+          className="cursor-pointer rounded-lg p-1.5 text-text-secondary hover:bg-surface-3 md:hidden"
         >
           <MenuIcon className="h-5 w-5" />
           <span className="sr-only">Toggle navigation</span>
@@ -58,7 +58,7 @@ export function GymNav({ gymId, role }: { gymId: string; role: Role }) {
 
       <input type="checkbox" id="gym-nav-toggle" className="peer hidden" />
 
-      <div className="hidden flex-col justify-between border-t border-gray-100 px-3 py-3 peer-checked:flex md:flex md:flex-1 md:border-t-0 md:py-4">
+      <div className="hidden flex-col justify-between border-t border-border-subtle px-3 py-3 peer-checked:flex md:flex md:flex-1 md:border-t-0 md:py-4">
         <ul className="flex flex-col gap-0.5">
           <li>
             <NavLink href={`/gym/${gymId}/dashboard`} icon={<DashboardIcon className="h-4.5 w-4.5" />}>
@@ -94,7 +94,7 @@ export function GymNav({ gymId, role }: { gymId: string; role: Role }) {
 
           {isAdmin && (
             <>
-              <li className="mt-4 mb-1 px-3 text-xs font-semibold tracking-wide text-gray-400 uppercase">
+              <li className="mt-4 mb-1 px-3 text-xs font-semibold tracking-wide text-text-tertiary uppercase">
                 Admin
               </li>
               <li>
@@ -146,10 +146,10 @@ export function GymNav({ gymId, role }: { gymId: string; role: Role }) {
           )}
         </ul>
 
-        <form action={logoutAction} className="mt-4 border-t border-gray-100 pt-3">
+        <form action={logoutAction} className="mt-4 border-t border-border-subtle pt-3">
           <button
             type="submit"
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-text-secondary hover:bg-surface-3 hover:text-foreground"
           >
             <LogoutIcon className="h-4 w-4" />
             Log out

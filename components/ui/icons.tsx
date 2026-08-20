@@ -39,13 +39,30 @@ export function SpinnerIcon(props: IconProps) {
   );
 }
 
-/** GymPilot brand mark — an abstract upward chevron in a rounded square. */
-export function LogoMark(props: IconProps) {
+/**
+ * GymPilot brand mark — a teal-to-cyan gradient badge with a small filled
+ * upward-chevron glyph, plus a soft matching glow. The one deliberate
+ * gradient+glow moment in the whole shell (design-direction items 1/4) —
+ * not reused as a generic icon treatment elsewhere.
+ */
+export function LogoMark({ className = "h-8 w-8" }: { className?: string }) {
   return (
-    <svg {...baseProps(props)} strokeWidth={1.75}>
-      <rect x="3" y="3" width="18" height="18" rx="6" />
-      <path d="M8 14l4-4 4 4" />
-    </svg>
+    <div
+      className={`flex shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-accent to-accent-cyan shadow-[0_0_16px_-4px_var(--accent)] ${className}`}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="h-[58%] w-[58%]"
+        fill="none"
+        style={{ stroke: "var(--accent-foreground)" }}
+        strokeWidth={2.25}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M7.5 14.5L12 10l4.5 4.5" />
+      </svg>
+    </div>
   );
 }
 

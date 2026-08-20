@@ -1,33 +1,60 @@
 @import "tailwindcss";
 
 /*
- * GymPilot design tokens (Phase 9.5). Kept deliberately small: one brand
- * accent (teal, used only for primary actions / active nav / focus — never
- * decoratively) plus a 3-color semantic palette (success/warning/danger).
- * Dark mode is explicitly out of scope for this phase (approved plan) — the
- * previous inert prefers-color-scheme block is removed rather than left
- * half-applied, since none of the new components adapt to it.
+ * GymPilot design tokens (Phase 9.5, revised).
+ *
+ * Dark-first: a deep navy/charcoal shell (never pure black) with three
+ * progressively lighter surface steps for hierarchy (nav/header, cards and
+ * tables, hover states). One primary brand accent (teal/cyan, used for
+ * identity, active nav, primary actions and focus), one sparing secondary
+ * accent (lime, reserved for positive/energetic highlights so it stays
+ * meaningful), and a semantic palette (success/warning/danger/info) tuned
+ * as light-toned text on dark-toned backgrounds for contrast on this base,
+ * not the light-mode pastel tints the first draft used.
+ *
+ * No light/dark toggle — this *is* the theme, deliberately, per the
+ * approved visual-direction revision.
  */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0b1220;
+  --foreground: #eef2f8;
 
-  --accent: #0f766e;
-  --accent-hover: #115e59;
-  --accent-foreground: #ffffff;
+  --surface-1: #131b2c;
+  --surface-2: #1a2338;
+  --surface-3: #212c46;
 
-  --success: #047857;
-  --success-bg: #ecfdf5;
-  --success-text: #065f46;
+  --border-subtle: #26314c;
+  --border-strong: #3a4870;
 
-  --warning: #b45309;
-  --warning-bg: #fffbeb;
-  --warning-text: #92400e;
+  --text-secondary: #9aa7c2;
+  --text-tertiary: #6b7794;
 
-  --danger: #be123c;
-  --danger-hover: #9f1239;
-  --danger-bg: #fff1f2;
-  --danger-text: #9f1239;
+  --accent: #2dd4bf;
+  --accent-strong: #14b8a6;
+  --accent-strong-hover: #0d9488;
+  --accent-foreground: #04211d;
+  --accent-soft-bg: #123531;
+  --accent-cyan: #22d3ee;
+
+  --accent2: #a3e635;
+
+  --success: #34d399;
+  --success-bg: #0f2a20;
+  --success-text: #6ee7b7;
+
+  --warning: #fbbf24;
+  --warning-bg: #2c2108;
+  --warning-text: #fcd34d;
+
+  --danger: #fb7185;
+  --danger-strong: #e11d48;
+  --danger-strong-hover: #be123c;
+  --danger-bg: #2c1220;
+  --danger-text: #fda4af;
+
+  --info: #38bdf8;
+  --info-bg: #0c2233;
+  --info-text: #7dd3fc;
 }
 
 @theme inline {
@@ -36,9 +63,23 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+
   --color-accent: var(--accent);
-  --color-accent-hover: var(--accent-hover);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-strong-hover: var(--accent-strong-hover);
   --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft-bg: var(--accent-soft-bg);
+  --color-accent-cyan: var(--accent-cyan);
+  --color-accent2: var(--accent2);
 
   --color-success: var(--success);
   --color-success-bg: var(--success-bg);
@@ -49,15 +90,23 @@
   --color-warning-text: var(--warning-text);
 
   --color-danger: var(--danger);
-  --color-danger-hover: var(--danger-hover);
+  --color-danger-strong: var(--danger-strong);
+  --color-danger-strong-hover: var(--danger-strong-hover);
   --color-danger-bg: var(--danger-bg);
   --color-danger-text: var(--danger-text);
+
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-info-text: var(--info-text);
 }
 
 body {
-  background: var(--background);
+  /* A restrained ambient glow bleeding from the top-left corner — the one
+     background gradient in the whole shell, present once, not layered on
+     every surface. */
+  background:
+    radial-gradient(1100px circle at 12% -8%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 55%),
+    var(--background);
   color: var(--foreground);
-  /* Previously hardcoded to Arial/Helvetica — the Geist font loaded in
-     app/layout.tsx was never actually applied to body text. */
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }

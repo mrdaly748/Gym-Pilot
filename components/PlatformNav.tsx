@@ -12,12 +12,12 @@ import { GymsIcon, LogoMark, LogoutIcon } from "@/components/ui/icons";
  */
 export function PlatformNav() {
   return (
-    <nav className="flex flex-wrap items-center justify-between gap-y-2 border-b border-gray-200 bg-white px-4 py-3.5">
+    <nav className="flex flex-wrap items-center justify-between gap-y-2 border-b border-border-subtle bg-surface-1 px-4 py-3.5">
       <div className="flex flex-wrap items-center gap-4">
-        <Link href="/platform" className="flex items-center gap-2 text-gray-900">
-          <LogoMark className="h-6 w-6 text-accent" />
+        <Link href="/platform" className="flex items-center gap-2.5 text-foreground">
+          <LogoMark className="h-8 w-8" />
           <span className="text-base font-semibold tracking-tight">GymPilot</span>
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+          <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs font-medium text-text-secondary">
             Platform Admin
           </span>
         </Link>
@@ -28,7 +28,7 @@ export function PlatformNav() {
       <form action={logoutAction}>
         <button
           type="submit"
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-secondary hover:bg-surface-3 hover:text-foreground"
         >
           <LogoutIcon className="h-4 w-4" />
           Log out
