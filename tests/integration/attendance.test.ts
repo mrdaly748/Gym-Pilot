@@ -22,6 +22,7 @@ import {
   gymAttendanceMetrics,
   gymAttendanceTrend,
   listCheckins,
+  listCheckinsPage,
   recordCheckin,
 } from "@/lib/server/services/attendance";
 import { NotFoundError, ValidationError } from "@/lib/server/errors";
@@ -275,6 +276,56 @@ describe("Phase 6 attendance service", () => {
 
       const gymBCheckins = await listCheckins({ userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
       expect(gymBCheckins).toHaveLength(0);
+    });
+  });
+
+  // Security audit finding M2: listCheckins() itself stays unbounded (used
+  // by tests and any caller needing a full, period-bounded set); the
+  // Attendance screen renders from listCheckinsPage() instead.
+  describe("listCheckinsPage (M2 pagination)", () => {
+    it("bounds a large check-in history to one page, with a stable total count", async () => {
+      for (let i = 0; i < 30; i++) {
+        await seedCheckin(owner, {
+          gymId: gymA.id,
+          memberId: memberA.id,
+          checkedInAt: new Date(2026, 0, 1, 0, 0, i), // distinct checkedInAt per row
+          recordedByUserId: adminA.id,
+        });
+      }
+
+      const page1 = await listCheckinsPage(adminContext(), { page: 1 });
+      expect(page1.items).toHaveLength(25);
+      expect(page1.totalCount).toBe(30);
+      expect(page1.totalPages).toBe(2);
+
+      const page2 = await listCheckinsPage(adminContext(), { page: 2 });
+      expect(page2.items).toHaveLength(5);
+      expect(page2.totalCount).toBe(30);
+
+      const allIds = [...page1.items, ...page2.items].map((c) => c.id);
+      expect(new Set(allIds).size).toBe(30);
+    });
+
+    it("clamps an out-of-range or invalid page to a safe result instead of throwing", async () => {
+      await recordCheckin(adminContext(), memberA.id);
+
+      const farPage = await listCheckinsPage(adminContext(), { page: 999 });
+      expect(farPage.items).toHaveLength(0);
+      expect(farPage.totalCount).toBe(1);
+
+      const zeroPage = await listCheckinsPage(adminContext(), { page: 0 });
+      expect(zeroPage.page).toBe(1);
+      expect(zeroPage.items).toHaveLength(1);
+    });
+
+    it("a gym cannot see another gym's check-ins through the paginated query either", async () => {
+      await recordCheckin(adminContext(), memberA.id);
+      const adminB = await seedUser(owner, "admin-b@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+
+      const gymBPage = await listCheckinsPage({ userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+      expect(gymBPage.items).toHaveLength(0);
+      expect(gymBPage.totalCount).toBe(0);
     });
   });
 

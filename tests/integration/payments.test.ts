@@ -22,6 +22,7 @@ import {
   gymRevenueForPeriod,
   gymRevenueTrend,
   listPayments,
+  listPaymentsPage,
   recordPayment,
 } from "@/lib/server/services/payments";
 import { archivePlan, createPlan } from "@/lib/server/services/plans";
@@ -279,6 +280,58 @@ describe("Phase 5 payments service", () => {
 
       const gymBPayments = await listPayments({ userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
       expect(gymBPayments).toHaveLength(0);
+    });
+  });
+
+  // Security audit finding M2: listPayments() itself stays unbounded (used
+  // by tests and any caller needing the full set); listPaymentsPage() is
+  // the bounded counterpart the Payments screen actually renders from.
+  describe("listPaymentsPage (M2 pagination)", () => {
+    it("bounds a large payment history to one page, with a stable total count", async () => {
+      for (let i = 0; i < 30; i++) {
+        await recordPayment(adminContext(), {
+          membershipId,
+          amountMillimes: 1000,
+          method: "cash",
+          paidAt: new Date(2026, 0, 1, 0, 0, i), // distinct paidAt per row
+        });
+      }
+
+      const page1 = await listPaymentsPage(adminContext(), { page: 1 });
+      expect(page1.items).toHaveLength(25);
+      expect(page1.totalCount).toBe(30);
+      expect(page1.totalPages).toBe(2);
+      expect(page1.page).toBe(1);
+
+      const page2 = await listPaymentsPage(adminContext(), { page: 2 });
+      expect(page2.items).toHaveLength(5);
+      expect(page2.totalCount).toBe(30);
+
+      // No row appears on both pages, and every row appears exactly once.
+      const allIds = [...page1.items, ...page2.items].map((p) => p.id);
+      expect(new Set(allIds).size).toBe(30);
+    });
+
+    it("clamps an out-of-range or invalid page to a safe result instead of throwing", async () => {
+      await recordPayment(adminContext(), { membershipId, amountMillimes: 1000, method: "cash" });
+
+      const farPage = await listPaymentsPage(adminContext(), { page: 999 });
+      expect(farPage.items).toHaveLength(0);
+      expect(farPage.totalCount).toBe(1);
+
+      const zeroPage = await listPaymentsPage(adminContext(), { page: 0 });
+      expect(zeroPage.page).toBe(1);
+      expect(zeroPage.items).toHaveLength(1);
+    });
+
+    it("a gym cannot see another gym's payments through the paginated query either", async () => {
+      await recordPayment(adminContext(), { membershipId, amountMillimes: 10000, method: "cash" });
+      const adminB = await seedUser(owner, "admin-b@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+
+      const gymBPage = await listPaymentsPage({ userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+      expect(gymBPage.items).toHaveLength(0);
+      expect(gymBPage.totalCount).toBe(0);
     });
   });
 

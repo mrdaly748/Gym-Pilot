@@ -1,6 +1,6 @@
 import { requireGym, requireRole } from "@/lib/server/auth";
 import { listMemberships } from "@/lib/server/services/memberships";
-import { gymOutstandingBalance, listPayments } from "@/lib/server/services/payments";
+import { gymOutstandingBalance, listPaymentsPage } from "@/lib/server/services/payments";
 import { adjustPaymentAction, recordPaymentAction, voidPaymentAction } from "./actions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FormSection } from "@/components/ui/FormSection";
@@ -11,6 +11,7 @@ import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { StatCard } from "@/components/ui/StatCard";
 import { Table, Thead, Th, Td, Tr, EmptyRow } from "@/components/ui/Table";
 import { Flash } from "@/components/ui/Flash";
+import { Pagination } from "@/components/ui/Pagination";
 import { PaymentsIcon } from "@/components/ui/icons";
 
 function formatMillimes(millimes: number): string {
@@ -37,18 +38,22 @@ export default async function PaymentsPage({
   searchParams,
 }: {
   params: Promise<{ gymId: string }>;
-  searchParams: Promise<{ error?: string; success?: string }>;
+  searchParams: Promise<{ error?: string; success?: string; page?: string }>;
 }) {
   const { gymId } = await params;
-  const { error, success } = await searchParams;
+  const { error, success, page: rawPage } = await searchParams;
   const session = await requireGym(gymId);
   await requireRole("GYM_ADMIN", "GYM_STAFF");
 
+  const parsedPage = Number(rawPage);
+  const page = Number.isFinite(parsedPage) && parsedPage >= 1 ? Math.floor(parsedPage) : 1;
+
   const context = { userId: session.userId, gymId, role: session.role };
-  const [payments, memberships] = await Promise.all([
-    listPayments(context),
+  const [paymentsPage, memberships] = await Promise.all([
+    listPaymentsPage(context, { page }),
     listMemberships(context),
   ]);
+  const payments = paymentsPage.items;
   const outstandingBalance =
     session.role === "GYM_ADMIN" ? await gymOutstandingBalance(context) : null;
 
@@ -169,9 +174,18 @@ export default async function PaymentsPage({
                   </Td>
                 </Tr>
               ))}
-              {payments.length === 0 && <EmptyRow colSpan={6}>No payments yet.</EmptyRow>}
+              {payments.length === 0 && (
+                <EmptyRow colSpan={6}>
+                  {paymentsPage.totalCount === 0 ? "No payments yet." : "No payments on this page."}
+                </EmptyRow>
+              )}
             </tbody>
           </Table>
+          <Pagination
+            page={paymentsPage.page}
+            totalPages={paymentsPage.totalPages}
+            basePath={`/gym/${gymId}/payments`}
+          />
         </div>
       </section>
     </main>

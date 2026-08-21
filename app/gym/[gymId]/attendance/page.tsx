@@ -1,6 +1,6 @@
 import { requireGym, requireRole } from "@/lib/server/auth";
 import { listMembers } from "@/lib/server/services/members";
-import { gymAttendanceMetrics, listCheckins } from "@/lib/server/services/attendance";
+import { gymAttendanceMetrics, listCheckinsPage } from "@/lib/server/services/attendance";
 import { checkInAction, correctCheckinAction, deleteCheckinAction } from "./actions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FormSection } from "@/components/ui/FormSection";
@@ -11,6 +11,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Badge, type BadgeStatus } from "@/components/ui/Badge";
 import { Table, Thead, Th, Td, Tr, EmptyRow } from "@/components/ui/Table";
 import { Flash } from "@/components/ui/Flash";
+import { Pagination } from "@/components/ui/Pagination";
 import { AttendanceIcon, MembersIcon } from "@/components/ui/icons";
 
 function formatDateTime(date: Date): string {
@@ -45,23 +46,27 @@ export default async function AttendancePage({
   searchParams,
 }: {
   params: Promise<{ gymId: string }>;
-  searchParams: Promise<{ error?: string; success?: string }>;
+  searchParams: Promise<{ error?: string; success?: string; page?: string }>;
 }) {
   const { gymId } = await params;
-  const { error, success } = await searchParams;
+  const { error, success, page: rawPage } = await searchParams;
   const session = await requireGym(gymId);
   await requireRole("GYM_ADMIN", "GYM_STAFF");
+
+  const parsedPage = Number(rawPage);
+  const page = Number.isFinite(parsedPage) && parsedPage >= 1 ? Math.floor(parsedPage) : 1;
 
   const context = { userId: session.userId, gymId, role: session.role };
   const now = new Date();
   const periodStart = startOfMonth(now);
   const periodEnd = endOfMonth(now);
 
-  const [members, checkins, metrics] = await Promise.all([
+  const [members, checkinsPage, metrics] = await Promise.all([
     listMembers(context),
-    listCheckins(context),
+    listCheckinsPage(context, { page }),
     gymAttendanceMetrics(context, periodStart, periodEnd),
   ]);
+  const checkins = checkinsPage.items;
 
   return (
     <main className="p-6 md:p-8">
@@ -174,9 +179,18 @@ export default async function AttendancePage({
                   </Td>
                 </Tr>
               ))}
-              {checkins.length === 0 && <EmptyRow colSpan={5}>No check-ins yet.</EmptyRow>}
+              {checkins.length === 0 && (
+                <EmptyRow colSpan={5}>
+                  {checkinsPage.totalCount === 0 ? "No check-ins yet." : "No check-ins on this page."}
+                </EmptyRow>
+              )}
             </tbody>
           </Table>
+          <Pagination
+            page={checkinsPage.page}
+            totalPages={checkinsPage.totalPages}
+            basePath={`/gym/${gymId}/attendance`}
+          />
         </div>
       </section>
     </main>

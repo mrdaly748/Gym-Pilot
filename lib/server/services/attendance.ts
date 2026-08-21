@@ -106,6 +106,78 @@ export async function listCheckins(
   });
 }
 
+export const CHECKINS_PAGE_SIZE = 25;
+
+export type PaginatedCheckins = {
+  items: CheckinSummary[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+};
+
+/**
+ * Security audit finding M2: check-ins are the fastest-growing table in the
+ * schema — one row per visit, unbounded over a gym's lifetime, unlike entity
+ * lists (members, trainers) that are naturally bounded by the gym's
+ * real-world size. This is the paginated counterpart to listCheckins()
+ * above, used only by the Attendance screen's "Recent check-ins" table;
+ * listCheckins() itself is left unchanged (still used by tests and any
+ * future caller that genuinely needs the full set for a bounded period).
+ * `checkedInAt` alone isn't a unique sort key, so `id` is added as a
+ * tiebreaker to keep offset pagination stable across page boundaries.
+ */
+export async function listCheckinsPage(
+  context: TenantContext,
+  opts?: { memberId?: string; periodStart?: Date; periodEnd?: Date; page?: number },
+): Promise<PaginatedCheckins> {
+  const now = new Date();
+  const pageSize = CHECKINS_PAGE_SIZE;
+  const page = Math.max(1, Math.floor(opts?.page ?? 1));
+  const where = {
+    gymId: context.gymId,
+    ...(opts?.memberId ? { memberId: opts.memberId } : {}),
+    ...(opts?.periodStart || opts?.periodEnd
+      ? {
+          checkedInAt: {
+            ...(opts?.periodStart ? { gte: opts.periodStart } : {}),
+            ...(opts?.periodEnd ? { lte: opts.periodEnd } : {}),
+          },
+        }
+      : {}),
+  };
+
+  return withTenant(context, async (tx) => {
+    const [rows, totalCount] = await Promise.all([
+      tx.attendanceCheckin.findMany({
+        where,
+        select: CHECKIN_SELECT,
+        orderBy: [{ checkedInAt: "desc" }, { id: "desc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      tx.attendanceCheckin.count({ where }),
+    ]);
+
+    const distinctMemberIds = [...new Set(rows.map((r) => r.memberId))];
+    const statusByMember = new Map<string, MembershipStatus | null>();
+    for (const memberId of distinctMemberIds) {
+      statusByMember.set(
+        memberId,
+        await currentMembershipStatus(tx, context.gymId, memberId, now),
+      );
+    }
+
+    return {
+      items: rows.map((row) => toSummary(row, statusByMember.get(row.memberId) ?? null)),
+      page,
+      pageSize,
+      totalCount,
+      totalPages: Math.max(1, Math.ceil(totalCount / pageSize)),
+    };
+  });
+}
+
 /**
  * The member's current membership status, derived the same way
  * memberships.ts does, for surfacing to staff at check-in time. `null` if

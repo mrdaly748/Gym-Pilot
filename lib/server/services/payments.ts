@@ -119,6 +119,60 @@ export async function listPayments(
   return rows.map(toSummary);
 }
 
+export const PAYMENTS_PAGE_SIZE = 25;
+
+export type PaginatedPayments = {
+  items: PaymentSummary[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+};
+
+/**
+ * Security audit finding M2: payments are an append-only ledger that grows
+ * with every transaction, forever — unlike entity lists (members, trainers,
+ * plans), which are naturally bounded by the gym's real-world size. This is
+ * the paginated counterpart to listPayments() above, used only by the
+ * Payments screen's "All payments" table; listPayments() itself is left
+ * unchanged (still used by tests and any future caller that genuinely needs
+ * the full unbounded set). `paidAt` alone isn't a unique sort key, so `id`
+ * is added as a tiebreaker — without it, two payments recorded in the same
+ * instant could be skipped or duplicated across page boundaries.
+ */
+export async function listPaymentsPage(
+  context: TenantContext,
+  opts?: { membershipId?: string; page?: number },
+): Promise<PaginatedPayments> {
+  const pageSize = PAYMENTS_PAGE_SIZE;
+  const page = Math.max(1, Math.floor(opts?.page ?? 1));
+  const where = {
+    gymId: context.gymId,
+    ...(opts?.membershipId ? { membershipId: opts.membershipId } : {}),
+  };
+
+  return withTenant(context, async (tx) => {
+    const [rows, totalCount] = await Promise.all([
+      tx.payment.findMany({
+        where,
+        select: PAYMENT_SELECT,
+        orderBy: [{ paidAt: "desc" }, { id: "desc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      tx.payment.count({ where }),
+    ]);
+
+    return {
+      items: rows.map(toSummary),
+      page,
+      pageSize,
+      totalCount,
+      totalPages: Math.max(1, Math.ceil(totalCount / pageSize)),
+    };
+  });
+}
+
 export type RecordPaymentInput = {
   membershipId: string;
   amountMillimes: number;
