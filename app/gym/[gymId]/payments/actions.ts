@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { requireGym, requireRole } from "@/lib/server/auth";
-import { adjustPayment, recordPayment } from "@/lib/server/services/payments";
+import { adjustPayment, recordPayment, voidPayment } from "@/lib/server/services/payments";
 import { NotFoundError, ValidationError } from "@/lib/server/errors";
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -62,24 +62,23 @@ export async function adjustPaymentAction(formData: FormData): Promise<void> {
   redirect(`/gym/${gymId}/payments?success=${encodeURIComponent("Adjustment recorded.")}`);
 }
 
-/** A full void is just an adjustment for the negative of the current effective amount — same mechanism as adjustPaymentAction, a distinct action only in the UI. */
+/**
+ * A full void is just an adjustment that brings the effective amount to
+ * exactly zero — same mechanism as adjustPaymentAction, a distinct action
+ * only in the UI. The amount is always recomputed server-side inside
+ * voidPayment() itself, from the database, never from a client-supplied
+ * value — a page render (or an open tab) can be stale relative to a
+ * since-applied adjustment.
+ */
 export async function voidPaymentAction(formData: FormData): Promise<void> {
   const gymId = String(formData.get("gymId") ?? "");
   const session = await requireGym(gymId);
   await requireRole("GYM_ADMIN");
 
   const paymentId = String(formData.get("paymentId") ?? "");
-  const effectiveAmountMillimes = Number.parseInt(
-    String(formData.get("effectiveAmountMillimes") ?? "0"),
-    10,
-  );
 
   try {
-    await adjustPayment(
-      { userId: session.userId, gymId, role: session.role },
-      paymentId,
-      { amountMillimes: -effectiveAmountMillimes, reason: "Voided" },
-    );
+    await voidPayment({ userId: session.userId, gymId, role: session.role }, paymentId);
   } catch (error) {
     const message = errorMessage(error, "Could not void payment.");
     redirect(`/gym/${gymId}/payments?error=${encodeURIComponent(message)}`);

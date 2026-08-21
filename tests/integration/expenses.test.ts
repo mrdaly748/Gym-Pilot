@@ -16,6 +16,7 @@ import {
   gymExpensesTrend,
   listExpenses,
   recordExpense,
+  voidExpense,
 } from "@/lib/server/services/expenses";
 import { NotFoundError, ValidationError } from "@/lib/server/errors";
 
@@ -128,6 +129,81 @@ describe("Phase 7 expenses service", () => {
           amountMillimes: -100,
         }),
       ).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  // MVP audit finding: voidExpenseAction previously trusted a client-supplied
+  // effectiveAmountMillimes, so a stale page (or a concurrent adjustment
+  // applied after the page rendered but before Void was clicked) could make
+  // a "void" over- or under-correct instead of exactly zeroing the balance.
+  // voidExpense() now recomputes the effective amount from the database
+  // inside its own transaction — mirrors payments.test.ts's voidPayment
+  // coverage exactly.
+  describe("voidExpense — recomputes the effective amount server-side, never trusts a client amount", () => {
+    it("zeroes the effective amount exactly, even after a prior adjustment changed it from what a stale page would have shown", async () => {
+      const { id: expenseId } = await recordExpense(adminContext(), {
+        category: "equipment",
+        amountMillimes: 100000,
+        expenseDate: new Date(),
+      });
+      await adjustExpense(adminContext(), expenseId, {
+        amountMillimes: -20000,
+        reason: "partial refund from supplier",
+      });
+
+      await voidExpense(adminContext(), expenseId);
+
+      const [row] = await listExpenses(adminContext());
+      expect(row.effectiveAmountMillimes).toBe(0);
+      expect(row.amountMillimes).toBe(100000); // the original expense row itself is never altered
+      expect(row.adjustments).toHaveLength(2); // the earlier adjustment, plus the void
+    });
+
+    it("zeroes an expense with no prior adjustments", async () => {
+      const { id: expenseId } = await recordExpense(adminContext(), {
+        category: "rent",
+        amountMillimes: 30000,
+        expenseDate: new Date(),
+      });
+
+      await voidExpense(adminContext(), expenseId);
+
+      const [row] = await listExpenses(adminContext());
+      expect(row.effectiveAmountMillimes).toBe(0);
+    });
+
+    it("rejects voiding an expense that is already fully voided", async () => {
+      const { id: expenseId } = await recordExpense(adminContext(), {
+        category: "other",
+        amountMillimes: 50000,
+        expenseDate: new Date(),
+      });
+      await voidExpense(adminContext(), expenseId);
+
+      await expect(voidExpense(adminContext(), expenseId)).rejects.toThrow(ValidationError);
+    });
+
+    it("rejects voiding an expense that doesn't exist in this gym", async () => {
+      await expect(
+        voidExpense(adminContext(), "00000000-0000-0000-0000-000000000000"),
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it("a gym cannot void another gym's expense", async () => {
+      const { id: expenseId } = await recordExpense(adminContext(), {
+        category: "rent",
+        amountMillimes: 50000,
+        expenseDate: new Date(),
+      });
+      const adminB = await seedUser(owner, "admin-b-void@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+
+      await expect(
+        voidExpense({ userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" }, expenseId),
+      ).rejects.toThrow(NotFoundError);
+
+      const [row] = await listExpenses(adminContext());
+      expect(row.effectiveAmountMillimes).toBe(50000);
     });
   });
 

@@ -217,6 +217,44 @@ export async function adjustExpense(
 }
 
 /**
+ * Void — recomputes the expense's current effective amount from the
+ * database inside this transaction and creates the adjustment needed to
+ * bring it to exactly zero. Mirrors payments.ts#voidPayment() exactly:
+ * never accepts a caller-supplied amount, since a value read at page-render
+ * time could be stale relative to a since-applied adjustment.
+ */
+export async function voidExpense(
+  context: TenantContext,
+  expenseId: string,
+): Promise<{ id: string }> {
+  return withTenant(context, async (tx) => {
+    const expense = await tx.expense.findFirst({
+      where: { id: expenseId, gymId: context.gymId },
+      select: EXPENSE_SELECT,
+    });
+    if (!expense) {
+      throw new NotFoundError("Expense not found in this gym.");
+    }
+
+    const effective = effectiveExpenseAmount(expense);
+    if (effective === 0) {
+      throw new ValidationError("Expense is already fully voided.");
+    }
+
+    return tx.expenseAdjustment.create({
+      data: {
+        gymId: context.gymId,
+        expenseId,
+        amountMillimes: -effective,
+        reason: "Voided",
+        recordedByUserId: context.userId,
+      },
+      select: { id: true },
+    });
+  });
+}
+
+/**
  * Rule 9/11: total expenses for a period, across every expense/adjustment
  * in the gym — the direct expense-side counterpart of
  * lib/server/services/payments.ts#gymRevenueForPeriod, same query shape

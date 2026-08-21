@@ -24,6 +24,7 @@ import {
   listPayments,
   listPaymentsPage,
   recordPayment,
+  voidPayment,
 } from "@/lib/server/services/payments";
 import { archivePlan, createPlan } from "@/lib/server/services/plans";
 import { assignMembership } from "@/lib/server/services/memberships";
@@ -175,6 +176,85 @@ describe("Phase 5 payments service", () => {
       await expect(
         adjustPayment(adminContext(), "00000000-0000-0000-0000-000000000000", { amountMillimes: -100 }),
       ).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  // MVP audit finding: voidPaymentAction previously trusted a client-supplied
+  // effectiveAmountMillimes, so a stale page (or a concurrent adjustment
+  // applied after the page rendered but before Void was clicked) could make
+  // a "void" over- or under-correct instead of exactly zeroing the balance.
+  // voidPayment() now recomputes the effective amount from the database
+  // inside its own transaction — these tests prove that recomputation, not
+  // just that *some* adjustment gets created.
+  describe("voidPayment — recomputes the effective amount server-side, never trusts a client amount", () => {
+    it("zeroes the effective amount exactly, even after a prior adjustment changed it from what a stale page would have shown", async () => {
+      const { id: paymentId } = await recordPayment(adminContext(), {
+        membershipId,
+        amountMillimes: 50000,
+        method: "cash",
+      });
+      // Simulates a concurrent/earlier adjustment a stale client page would
+      // not have seen — the effective amount is now 40000, not the 50000 a
+      // stale hidden field would have carried.
+      await adjustPayment(adminContext(), paymentId, {
+        amountMillimes: -10000,
+        reason: "partial refund",
+      });
+
+      await voidPayment(adminContext(), paymentId);
+
+      const [row] = await listPayments(adminContext());
+      expect(row.effectiveAmountMillimes).toBe(0);
+      expect(row.amountMillimes).toBe(50000); // the original payment row itself is never altered
+      expect(row.adjustments).toHaveLength(2); // the earlier adjustment, plus the void
+    });
+
+    it("zeroes a payment with no prior adjustments", async () => {
+      const { id: paymentId } = await recordPayment(adminContext(), {
+        membershipId,
+        amountMillimes: 25000,
+        method: "cash",
+      });
+
+      await voidPayment(adminContext(), paymentId);
+
+      const [row] = await listPayments(adminContext());
+      expect(row.effectiveAmountMillimes).toBe(0);
+    });
+
+    it("rejects voiding a payment that is already fully voided", async () => {
+      const { id: paymentId } = await recordPayment(adminContext(), {
+        membershipId,
+        amountMillimes: 50000,
+        method: "cash",
+      });
+      await voidPayment(adminContext(), paymentId);
+
+      await expect(voidPayment(adminContext(), paymentId)).rejects.toThrow(ValidationError);
+    });
+
+    it("rejects voiding a payment that doesn't exist in this gym", async () => {
+      await expect(
+        voidPayment(adminContext(), "00000000-0000-0000-0000-000000000000"),
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it("a gym cannot void another gym's payment", async () => {
+      const { id: paymentId } = await recordPayment(adminContext(), {
+        membershipId,
+        amountMillimes: 50000,
+        method: "cash",
+      });
+      const adminB = await seedUser(owner, "admin-b-void@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+
+      await expect(
+        voidPayment({ userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" }, paymentId),
+      ).rejects.toThrow(NotFoundError);
+
+      // The payment in gym A is untouched by the failed cross-gym attempt.
+      const [row] = await listPayments(adminContext());
+      expect(row.effectiveAmountMillimes).toBe(50000);
     });
   });
 

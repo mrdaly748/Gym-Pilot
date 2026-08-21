@@ -109,11 +109,6 @@ export default async function ExpensesPage({
                         <form action={voidExpenseAction}>
                           <input type="hidden" name="gymId" value={gymId} />
                           <input type="hidden" name="expenseId" value={e.id} />
-                          <input
-                            type="hidden"
-                            name="effectiveAmountMillimes"
-                            value={e.effectiveAmountMillimes}
-                          />
                           <ConfirmSubmitButton
                             confirmTitle="Void this expense?"
                             confirmMessage="This records a full offsetting adjustment — the original expense stays in the audit trail, it is never deleted."

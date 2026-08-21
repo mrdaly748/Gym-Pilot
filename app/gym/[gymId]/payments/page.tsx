@@ -22,6 +22,27 @@ function formatDate(date: Date): string {
   return new Date(date).toLocaleDateString();
 }
 
+// Current/usable memberships are grouped first so the dropdown stays
+// navigable as a member's renewal history accumulates — nothing is removed
+// (a late payment against a lapsed membership is a legitimate workflow),
+// each option is just labeled with its status so historical entries are
+// never mistaken for the current one.
+const MEMBERSHIP_STATUS_PRIORITY: Record<string, number> = {
+  ACTIVE: 0,
+  EXPIRING_SOON: 1,
+  FROZEN: 2,
+  EXPIRED: 3,
+  CANCELLED: 4,
+};
+
+const MEMBERSHIP_STATUS_LABEL: Record<string, string> = {
+  ACTIVE: "Active",
+  EXPIRING_SOON: "Expiring soon",
+  FROZEN: "Frozen",
+  EXPIRED: "Expired",
+  CANCELLED: "Cancelled",
+};
+
 /**
  * Gym Admin AND Gym Staff can record payments and see individual payment
  * records (product-spec.md §11.4, and the core "collect an outstanding
@@ -56,6 +77,10 @@ export default async function PaymentsPage({
   const payments = paymentsPage.items;
   const outstandingBalance =
     session.role === "GYM_ADMIN" ? await gymOutstandingBalance(context) : null;
+  const membershipOptions = [...memberships].sort(
+    (a, b) =>
+      (MEMBERSHIP_STATUS_PRIORITY[a.status] ?? 99) - (MEMBERSHIP_STATUS_PRIORITY[b.status] ?? 99),
+  );
 
   return (
     <main className="p-6 md:p-8">
@@ -79,9 +104,9 @@ export default async function PaymentsPage({
             <option value="" disabled>
               Select a membership
             </option>
-            {memberships.map((m) => (
+            {membershipOptions.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.memberName} — {m.planNameSnapshot}
+                {m.memberName} — {m.planNameSnapshot} ({MEMBERSHIP_STATUS_LABEL[m.status] ?? m.status})
               </option>
             ))}
           </Select>
@@ -132,11 +157,6 @@ export default async function PaymentsPage({
                         <form action={voidPaymentAction}>
                           <input type="hidden" name="gymId" value={gymId} />
                           <input type="hidden" name="paymentId" value={p.id} />
-                          <input
-                            type="hidden"
-                            name="effectiveAmountMillimes"
-                            value={p.effectiveAmountMillimes}
-                          />
                           <ConfirmSubmitButton
                             confirmTitle="Void this payment?"
                             confirmMessage="This records a full offsetting adjustment — the original payment stays in the audit trail, it is never deleted."

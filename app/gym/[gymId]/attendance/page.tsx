@@ -163,11 +163,16 @@ export default async function AttendancePage({
                             <input type="hidden" name="gymId" value={gymId} />
                             <input type="hidden" name="checkinId" value={c.id} />
                             <Select label="Member" name="memberId" required defaultValue="">
-                              {members.map((m) => (
-                                <option key={m.id} value={m.id}>
-                                  {m.name}
-                                </option>
-                              ))}
+                              <option value="" disabled>
+                                Select a member
+                              </option>
+                              {members
+                                .filter((m) => !m.archivedAt)
+                                .map((m) => (
+                                  <option key={m.id} value={m.id}>
+                                    {m.name}
+                                  </option>
+                                ))}
                             </Select>
                             <Button type="submit" variant="primary" className="self-start">
                               Save correction

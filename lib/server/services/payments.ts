@@ -258,6 +258,48 @@ export async function adjustPayment(
 }
 
 /**
+ * Void — recomputes the payment's current effective amount from the
+ * database inside this transaction and creates the adjustment needed to
+ * bring it to exactly zero. Never accepts a caller-supplied amount: an
+ * amount read from a page render (or any other point in time before this
+ * call) could be stale relative to a since-applied adjustment, which would
+ * make a "void" over- or under-correct instead of exactly zeroing the
+ * balance. Same append-only mechanism as adjustPayment() — this is not a
+ * second correction path, just a fresh read of "current" instead of a
+ * trusted one.
+ */
+export async function voidPayment(
+  context: TenantContext,
+  paymentId: string,
+): Promise<{ id: string }> {
+  return withTenant(context, async (tx) => {
+    const payment = await tx.payment.findFirst({
+      where: { id: paymentId, gymId: context.gymId },
+      select: PAYMENT_SELECT,
+    });
+    if (!payment) {
+      throw new NotFoundError("Payment not found in this gym.");
+    }
+
+    const effective = effectivePaymentAmount(payment);
+    if (effective === 0) {
+      throw new ValidationError("Payment is already fully voided.");
+    }
+
+    return tx.paymentAdjustment.create({
+      data: {
+        gymId: context.gymId,
+        paymentId,
+        amountMillimes: -effective,
+        reason: "Voided",
+        recordedByUserId: context.userId,
+      },
+      select: { id: true },
+    });
+  });
+}
+
+/**
  * Rule 5's gym-level "outstanding payments" metric: the sum of outstanding
  * balances across all current (non-cancelled) memberships. Composes
  * metrics.ts's pure outstandingBalance() per membership — never a second,
