@@ -25,6 +25,18 @@ import { SYSTEM_PROMPT } from "@/lib/ai/systemPrompt";
  */
 export const runtime = "nodejs";
 
+/**
+ * Cost/DoS control (security audit finding M1): the daily usage counter
+ * below bounds how many requests a gym can make per day, not how large any
+ * single request is. Without a per-request cap, one authenticated request
+ * could carry an arbitrarily long conversation while still only costing the
+ * gym one of its 20 daily slots. These limits are generous for a genuine
+ * grounded Q&A turn (the UI only ever grows a conversation one turn at a
+ * time) but bound the worst case.
+ */
+const MAX_AI_MESSAGE_COUNT = 50;
+const MAX_AI_INPUT_CHARS = 20_000;
+
 export async function POST(req: Request): Promise<Response> {
   let session;
   try {
@@ -51,6 +63,19 @@ export async function POST(req: Request): Promise<Response> {
 
   const context = { userId: session.userId, gymId: session.gymId, role: session.role };
 
+  const { messages }: { messages: UIMessage[] } = await req.json();
+
+  if (messages.length > MAX_AI_MESSAGE_COUNT) {
+    return Response.json(
+      { error: "This conversation has too many messages. Start a new chat." },
+      { status: 400 },
+    );
+  }
+  const inputSize = messages.reduce((total, m) => total + JSON.stringify(m).length, 0);
+  if (inputSize > MAX_AI_INPUT_CHARS) {
+    return Response.json({ error: "This message is too long." }, { status: 400 });
+  }
+
   const usage = await checkAndIncrementUsage(context);
   if (!usage.allowed) {
     return Response.json(
@@ -59,7 +84,6 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  const { messages }: { messages: UIMessage[] } = await req.json();
   const modelMessages = await convertToModelMessages(messages);
 
   const result = streamText({

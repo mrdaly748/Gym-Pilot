@@ -2,7 +2,7 @@ import "server-only";
 import { withPlatform } from "@/lib/server/db";
 import type { GymStatus } from "@/lib/server/generated/prisma-client/enums";
 import { inviteAuthUser, deleteAuthUserBestEffort } from "@/lib/server/supabaseAdmin";
-import { ValidationError } from "@/lib/server/errors";
+import { NotFoundError, ValidationError } from "@/lib/server/errors";
 import { isNonEmpty, isValidEmail } from "@/lib/server/validation";
 
 /**
@@ -101,5 +101,10 @@ export async function setGymStatus(
   gymId: string,
   status: GymStatus,
 ): Promise<void> {
-  await withPlatform((tx) => tx.gym.update({ where: { id: gymId }, data: { status } }));
+  const result = await withPlatform((tx) =>
+    tx.gym.updateMany({ where: { id: gymId }, data: { status } }),
+  );
+  if (result.count === 0) {
+    throw new NotFoundError("Gym not found.");
+  }
 }

@@ -29,14 +29,14 @@ vi.mock("@/lib/server/supabaseAdmin", () => ({
   deleteAuthUserBestEffort,
 }));
 
-import { createGym, listGyms } from "@/lib/server/services/platformAdmin";
+import { createGym, listGyms, setGymStatus } from "@/lib/server/services/platformAdmin";
 import {
   createGymStaff,
   disableGymStaff,
   enableGymStaff,
   listGymStaff,
 } from "@/lib/server/services/gymStaff";
-import { ValidationError } from "@/lib/server/errors";
+import { NotFoundError, ValidationError } from "@/lib/server/errors";
 
 describe("provisioning services (Phase 2)", () => {
   let owner: Pool;
@@ -142,6 +142,26 @@ describe("provisioning services (Phase 2)", () => {
           ["createdAt", "id", "name", "status"].sort(),
         );
       }
+    });
+  });
+
+  describe("setGymStatus", () => {
+    it("updates an existing gym's status", async () => {
+      await setGymStatus(gymA.id, "SUSPENDED");
+      const gym = await withPlatform((tx) =>
+        tx.gym.findUniqueOrThrow({ where: { id: gymA.id } }),
+      );
+      expect(gym.status).toBe("SUSPENDED");
+    });
+
+    // Security audit finding L2: previously a bare tx.gym.update(), which
+    // throws a raw, untyped Prisma error for a missing row — inconsistent
+    // with every other mutation in the codebase's updateMany + typed
+    // NotFoundError convention.
+    it("throws a typed NotFoundError for a gym id that doesn't exist", async () => {
+      await expect(
+        setGymStatus("00000000-0000-0000-0000-000000000000", "SUSPENDED"),
+      ).rejects.toThrow(NotFoundError);
     });
   });
 

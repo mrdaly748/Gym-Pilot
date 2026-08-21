@@ -97,4 +97,48 @@ describe("Phase 9 — /api/ai route authorization", () => {
       expect.objectContaining({ gymId: "session-gym" }),
     );
   });
+
+  // Security audit finding M1: the daily counter above bounds request
+  // *count*, not the size of any one request. These prove an oversized
+  // payload is rejected before either the usage counter is spent or the
+  // model is invoked.
+  describe("per-request size cap (M1)", () => {
+    function textMessage(id: string, text: string) {
+      return { id, role: "user" as const, parts: [{ type: "text" as const, text }] };
+    }
+
+    it("returns 400 and never calls the model for a conversation with too many messages", async () => {
+      requireRole.mockResolvedValueOnce({ userId: "u1", email: "a@test.local", gymId: "g1", role: "GYM_ADMIN" });
+      const messages = Array.from({ length: 51 }, (_, i) => textMessage(String(i), "hi"));
+
+      const response = await POST(jsonRequest({ messages }));
+
+      expect(response.status).toBe(400);
+      expect(checkAndIncrementUsage).not.toHaveBeenCalled();
+      expect(streamTextMock).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 and never calls the model for an oversized message payload", async () => {
+      requireRole.mockResolvedValueOnce({ userId: "u1", email: "a@test.local", gymId: "g1", role: "GYM_ADMIN" });
+      const messages = [textMessage("1", "a".repeat(25_000))];
+
+      const response = await POST(jsonRequest({ messages }));
+
+      expect(response.status).toBe(400);
+      expect(checkAndIncrementUsage).not.toHaveBeenCalled();
+      expect(streamTextMock).not.toHaveBeenCalled();
+    });
+
+    it("allows a normal-sized conversation through to the usage check and model", async () => {
+      requireRole.mockResolvedValueOnce({ userId: "u1", email: "a@test.local", gymId: "g1", role: "GYM_ADMIN" });
+      checkAndIncrementUsage.mockResolvedValueOnce({ allowed: true, remaining: 19 });
+      const messages = [textMessage("1", "How many active members do I have?")];
+
+      const response = await POST(jsonRequest({ messages }));
+
+      expect(response.status).toBe(200);
+      expect(checkAndIncrementUsage).toHaveBeenCalledTimes(1);
+      expect(streamTextMock).toHaveBeenCalledTimes(1);
+    });
+  });
 });

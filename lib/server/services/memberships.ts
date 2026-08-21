@@ -292,11 +292,11 @@ export async function resumeMembership(
 
     const days = frozenDays(openFreeze.frozenAt, now);
     await tx.membershipFreeze.update({
-      where: { id: openFreeze.id },
+      where: { id: openFreeze.id, gymId: context.gymId },
       data: { resumedAt: now },
     });
     await tx.membership.update({
-      where: { id: membershipId },
+      where: { id: membershipId, gymId: context.gymId },
       data: { endDate: addDays(membership.endDate, days) },
     });
   });
