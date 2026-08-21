@@ -110,7 +110,7 @@ export default async function MembersPage({
                 <Tr key={member.id}>
                   <Td>
                     <Link
-                      href={`/gym/${gymId}/members/${member.id}/edit`}
+                      href={`/gym/${gymId}/members/${member.id}`}
                       className="font-medium text-foreground hover:text-accent"
                     >
                       {member.name}

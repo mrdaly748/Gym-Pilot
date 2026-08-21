@@ -112,6 +112,25 @@ describe("Phase 4 memberships service", () => {
     });
   });
 
+  // Product-completion audit, P0 #2: the Member Detail page fetches a
+  // single member's membership history via this filter.
+  describe("listMemberships({ memberId }) — Member Detail scoping", () => {
+    it("returns only the requested member's memberships, not another member's in the same gym", async () => {
+      const memberC = await seedMember(owner, {
+        gymId: gymA.id,
+        name: "Other Member",
+        phone: "20777888",
+        phoneNormalized: "20777888",
+      });
+      await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id });
+      await assignMembership(adminContext(), { memberId: memberC.id, planId: planA.id });
+
+      const results = await listMemberships(adminContext(), { memberId: memberA.id });
+      expect(results).toHaveLength(1);
+      expect(results[0].memberId).toBe(memberA.id);
+    });
+  });
+
   describe("plan price/duration changes are not retroactive", () => {
     it("editing the plan after assignment does not change the already-sold membership's snapshot", async () => {
       await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id });

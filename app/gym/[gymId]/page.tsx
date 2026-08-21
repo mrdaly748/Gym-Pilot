@@ -174,7 +174,7 @@ export default async function GymHomePage({
               {expiringPreview.map((m) => (
                 <li key={m.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                   <Link
-                    href={`/gym/${gymId}/members/${m.memberId}/edit`}
+                    href={`/gym/${gymId}/members/${m.memberId}`}
                     className="text-sm font-medium text-foreground hover:text-accent"
                   >
                     {m.memberName}

@@ -102,15 +102,22 @@ function toSummary(row: PaymentRow): PaymentSummary {
   };
 }
 
+/**
+ * `memberId` (Member Detail/Profile, P0 #2) returns every payment across
+ * every one of that member's memberships (a member's payment history isn't
+ * scoped to one membership the way `membershipId` is) — via a nested
+ * relation filter, since Payment itself carries no memberId column.
+ */
 export async function listPayments(
   context: TenantContext,
-  opts?: { membershipId?: string },
+  opts?: { membershipId?: string; memberId?: string },
 ): Promise<PaymentSummary[]> {
   const rows = await withTenant(context, (tx) =>
     tx.payment.findMany({
       where: {
         gymId: context.gymId,
         ...(opts?.membershipId ? { membershipId: opts.membershipId } : {}),
+        ...(opts?.memberId ? { membership: { memberId: opts.memberId } } : {}),
       },
       select: PAYMENT_SELECT,
       orderBy: { paidAt: "desc" },

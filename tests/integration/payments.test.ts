@@ -27,7 +27,7 @@ import {
   voidPayment,
 } from "@/lib/server/services/payments";
 import { archivePlan, createPlan } from "@/lib/server/services/plans";
-import { assignMembership } from "@/lib/server/services/memberships";
+import { assignMembership, cancelMembership } from "@/lib/server/services/memberships";
 import { NotFoundError, ValidationError } from "@/lib/server/errors";
 
 describe("Phase 5 payments service", () => {
@@ -412,6 +412,83 @@ describe("Phase 5 payments service", () => {
       const gymBPage = await listPaymentsPage({ userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
       expect(gymBPage.items).toHaveLength(0);
       expect(gymBPage.totalCount).toBe(0);
+    });
+  });
+
+  // Product-completion audit, P0 #2: the Member Detail page's payment
+  // history uses this filter.
+  describe("listPayments({ memberId }) — Member Detail scoping", () => {
+    it("returns every payment across all of a member's memberships, not just one", async () => {
+      await recordPayment(adminContext(), { membershipId, amountMillimes: 10000, method: "cash" });
+
+      // Cancel then reassign to legitimately give memberA a second membership.
+      await cancelMembership(adminContext(), membershipId);
+      const { id: secondMembershipId } = await assignMembership(adminContext(), {
+        memberId: memberA.id,
+        planId: planA.id,
+      });
+      await recordPayment(adminContext(), {
+        membershipId: secondMembershipId,
+        amountMillimes: 20000,
+        method: "card",
+      });
+
+      const results = await listPayments(adminContext(), { memberId: memberA.id });
+      expect(results).toHaveLength(2);
+      expect(results.map((p) => p.membershipId).sort()).toEqual(
+        [membershipId, secondMembershipId].sort(),
+      );
+    });
+
+    it("excludes another member's payments in the same gym", async () => {
+      const memberC = await seedMember(owner, {
+        gymId: gymA.id,
+        name: "Other Member",
+        phone: "20777888",
+        phoneNormalized: "20777888",
+      });
+      const { id: membershipC } = await assignMembership(adminContext(), {
+        memberId: memberC.id,
+        planId: planA.id,
+      });
+      await recordPayment(adminContext(), { membershipId, amountMillimes: 10000, method: "cash" });
+      await recordPayment(adminContext(), { membershipId: membershipC, amountMillimes: 5000, method: "cash" });
+
+      const results = await listPayments(adminContext(), { memberId: memberA.id });
+      expect(results).toHaveLength(1);
+      expect(results[0].membershipId).toBe(membershipId);
+    });
+
+    it("returns an empty list for a member with no payments", async () => {
+      const memberC = await seedMember(owner, {
+        gymId: gymA.id,
+        name: "No Payments",
+        phone: "20333444",
+        phoneNormalized: "20333444",
+      });
+      const results = await listPayments(adminContext(), { memberId: memberC.id });
+      expect(results).toHaveLength(0);
+    });
+
+    it("respects tenant isolation — a memberId belonging to another gym returns nothing", async () => {
+      const adminB = await seedUser(owner, "admin-b-memberpay@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+      const memberBSeed = await seedMember(owner, {
+        gymId: gymB.id,
+        name: "Gym B Member",
+        phone: "29000000",
+        phoneNormalized: "29000000",
+      });
+      const planB = await seedPlan(owner, { gymId: gymB.id, name: "Monthly" });
+      const gymBContext = { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" as const };
+      const { id: membershipB } = await assignMembership(gymBContext, {
+        memberId: memberBSeed.id,
+        planId: planB.id,
+      });
+      await recordPayment(gymBContext, { membershipId: membershipB, amountMillimes: 10000, method: "cash" });
+
+      const results = await listPayments(adminContext(), { memberId: memberBSeed.id });
+      expect(results).toHaveLength(0);
     });
   });
 

@@ -301,7 +301,7 @@ function ExpiringList({
           <Tr key={item.id}>
             <Td>
               <Link
-                href={`/gym/${gymId}/members/${item.memberId}/edit`}
+                href={`/gym/${gymId}/members/${item.memberId}`}
                 className="font-medium text-foreground hover:text-accent"
               >
                 {item.memberName}

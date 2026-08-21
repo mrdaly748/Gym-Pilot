@@ -279,6 +279,25 @@ describe("Phase 6 attendance service", () => {
     });
   });
 
+  // Product-completion audit, P0 #2: the Member Detail page's check-in
+  // history uses this filter.
+  describe("listCheckins({ memberId }) — Member Detail scoping", () => {
+    it("excludes another member's check-ins in the same gym", async () => {
+      const memberC = await seedMember(owner, {
+        gymId: gymA.id,
+        name: "Other Member",
+        phone: "20777888",
+        phoneNormalized: "20777888",
+      });
+      await recordCheckin(adminContext(), memberA.id);
+      await recordCheckin(adminContext(), memberC.id);
+
+      const results = await listCheckins(adminContext(), { memberId: memberA.id });
+      expect(results).toHaveLength(1);
+      expect(results[0].memberId).toBe(memberA.id);
+    });
+  });
+
   // Security audit finding M2: listCheckins() itself stays unbounded (used
   // by tests and any caller needing a full, period-bounded set); the
   // Attendance screen renders from listCheckinsPage() instead.

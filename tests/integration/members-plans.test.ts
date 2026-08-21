@@ -14,6 +14,7 @@ import { prisma } from "@/lib/server/db";
 import {
   archiveMember,
   createMember,
+  getMember,
   listMembers,
   reactivateMember,
   updateMember,
@@ -159,6 +160,56 @@ describe("Phase 3 services (members + plans)", () => {
       await expect(
         createMember(adminContext(), { name: "  ", phone: "20123456", joinDate: new Date() }),
       ).rejects.toThrow(ValidationError);
+    });
+  });
+
+  // Product-completion audit, P0 #2: Member Detail/Profile page relies on
+  // getMember() to resolve the record it's rendering.
+  describe("getMember", () => {
+    it("returns a member's full record for a Gym Admin or Gym Staff in their own gym", async () => {
+      const { id } = await createMember(adminContext(), {
+        name: "Ali",
+        phone: "20123456",
+        joinDate: new Date("2026-01-01"),
+        emergencyContactName: "Mona",
+        emergencyContactPhone: "20999999",
+      });
+
+      const asAdmin = await getMember(adminContext(), id);
+      expect(asAdmin?.name).toBe("Ali");
+      expect(asAdmin?.emergencyContactName).toBe("Mona");
+
+      const asStaff = await getMember(staffContext(), id);
+      expect(asStaff?.id).toBe(id);
+    });
+
+    it("returns null for a member that doesn't exist", async () => {
+      const result = await getMember(adminContext(), "00000000-0000-0000-0000-000000000000");
+      expect(result).toBeNull();
+    });
+
+    it("returns null for a member in another gym (tenant isolation)", async () => {
+      const gymBAdmin = await seedUser(owner, "admin-b-getmember@test.local");
+      await seedMembership(owner, { userId: gymBAdmin.id, gymId: gymB.id, role: "GYM_ADMIN" });
+      const { id } = await createMember(
+        { userId: gymBAdmin.id, gymId: gymB.id, role: "GYM_ADMIN" },
+        { name: "Sami", phone: "20111222", joinDate: new Date() },
+      );
+
+      const result = await getMember(adminContext(), id);
+      expect(result).toBeNull();
+    });
+
+    it("still returns an archived member's record (the detail page must be able to show/reactivate them)", async () => {
+      const { id } = await createMember(adminContext(), {
+        name: "Old Timer",
+        phone: "20555666",
+        joinDate: new Date("2020-01-01"),
+      });
+      await archiveMember(adminContext(), id);
+
+      const result = await getMember(adminContext(), id);
+      expect(result?.archivedAt).not.toBeNull();
     });
   });
 
