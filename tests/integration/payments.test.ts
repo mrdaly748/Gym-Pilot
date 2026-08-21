@@ -21,6 +21,7 @@ import {
   gymPlanPerformance,
   gymRevenueForPeriod,
   gymRevenueTrend,
+  listOutstandingBalances,
   listPayments,
   listPaymentsPage,
   recordPayment,
@@ -303,6 +304,120 @@ describe("Phase 5 payments service", () => {
       const balanceBefore = await gymOutstandingBalance(adminContext());
       // The cancelled membership's full 50000 price must NOT appear.
       expect(balanceBefore).toBe(50000); // only memberA's untouched membership
+    });
+  });
+
+  // Stage 1, P1 #3: "who owes money" — the Dashboard's per-member breakdown
+  // of the same figure gymOutstandingBalance() sums into one gym-wide
+  // total. Reuses outstandingBalance() directly (see the tests above,
+  // which already prove that pure function's correctness); these tests
+  // are about the listing/filtering/ordering behavior specific to this
+  // function, not a second calculation.
+  describe("listOutstandingBalances — \"who owes money\" (Dashboard, P1 #3)", () => {
+    it("a membership with a positive balance appears, with the correct fields", async () => {
+      await recordPayment(adminContext(), { membershipId, amountMillimes: 20000, method: "cash" });
+
+      const results = await listOutstandingBalances(adminContext());
+      expect(results).toHaveLength(1);
+      expect(results[0]).toMatchObject({
+        membershipId,
+        memberId: memberA.id,
+        memberName: "Ali",
+        memberPhone: "20123456",
+        planNameSnapshot: "Monthly",
+        balanceMillimes: 30000, // 50000 - 20000
+      });
+    });
+
+    it("returns multiple members who owe money", async () => {
+      const memberC = await seedMember(owner, {
+        gymId: gymA.id,
+        name: "Second Debtor",
+        phone: "20222333",
+        phoneNormalized: "20222333",
+      });
+      await assignMembership(adminContext(), { memberId: memberC.id, planId: planA.id });
+      // memberA's membership (from beforeEach) and memberC's new one both
+      // have zero payments recorded — both owe the full plan price.
+
+      const results = await listOutstandingBalances(adminContext());
+      expect(results).toHaveLength(2);
+      expect(results.map((r) => r.memberId).sort()).toEqual([memberA.id, memberC.id].sort());
+    });
+
+    it("orders results by outstanding balance descending", async () => {
+      const memberC = await seedMember(owner, {
+        gymId: gymA.id,
+        name: "Small Debtor",
+        phone: "20222333",
+        phoneNormalized: "20222333",
+      });
+      const { id: membershipC } = await assignMembership(adminContext(), {
+        memberId: memberC.id,
+        planId: planA.id,
+      });
+      // memberA owes the full 50000 (no payment yet). memberC pays most of
+      // theirs, leaving a smaller balance.
+      await recordPayment(adminContext(), { membershipId: membershipC, amountMillimes: 45000, method: "cash" });
+
+      const results = await listOutstandingBalances(adminContext());
+      expect(results).toHaveLength(2);
+      expect(results[0]).toMatchObject({ memberId: memberA.id, balanceMillimes: 50000 });
+      expect(results[1]).toMatchObject({ memberId: memberC.id, balanceMillimes: 5000 });
+    });
+
+    it("excludes a membership that's been paid in full (zero balance)", async () => {
+      await recordPayment(adminContext(), { membershipId, amountMillimes: 50000, method: "cash" });
+
+      const results = await listOutstandingBalances(adminContext());
+      expect(results).toHaveLength(0);
+    });
+
+    it("excludes cancelled memberships even though they'd otherwise show a balance", async () => {
+      await owner.query("UPDATE memberships SET cancelled_at = now() WHERE id = $1", [membershipId]);
+
+      const results = await listOutstandingBalances(adminContext());
+      expect(results).toHaveLength(0);
+    });
+
+    it("the sum of individual balances matches gymOutstandingBalance()'s own total", async () => {
+      const memberC = await seedMember(owner, {
+        gymId: gymA.id,
+        name: "Second Debtor",
+        phone: "20222333",
+        phoneNormalized: "20222333",
+      });
+      const { id: membershipC } = await assignMembership(adminContext(), {
+        memberId: memberC.id,
+        planId: planA.id,
+      });
+      await recordPayment(adminContext(), { membershipId, amountMillimes: 10000, method: "cash" });
+      await recordPayment(adminContext(), { membershipId: membershipC, amountMillimes: 5000, method: "cash" });
+
+      const results = await listOutstandingBalances(adminContext());
+      const sum = results.reduce((total, r) => total + r.balanceMillimes, 0);
+      const gymTotal = await gymOutstandingBalance(adminContext());
+      expect(sum).toBe(gymTotal);
+    });
+
+    it("a gym cannot see another gym's outstanding balances (tenant isolation)", async () => {
+      const adminB = await seedUser(owner, "admin-b-owed@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+      const memberB = await seedMember(owner, {
+        gymId: gymB.id,
+        name: "Gym B Debtor",
+        phone: "29000000",
+        phoneNormalized: "29000000",
+      });
+      const planB = await seedPlan(owner, { gymId: gymB.id, name: "Monthly" });
+      await assignMembership(
+        { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" },
+        { memberId: memberB.id, planId: planB.id },
+      );
+
+      const results = await listOutstandingBalances(adminContext());
+      expect(results).toHaveLength(1);
+      expect(results[0].memberId).toBe(memberA.id);
     });
   });
 

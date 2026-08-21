@@ -334,6 +334,61 @@ export async function gymOutstandingBalance(context: TenantContext): Promise<num
   });
 }
 
+export type OutstandingBalanceSummary = {
+  membershipId: string;
+  memberId: string;
+  memberName: string;
+  memberPhone: string;
+  planNameSnapshot: string;
+  balanceMillimes: number;
+};
+
+/**
+ * Rule 5, per-membership: the same non-cancelled-membership definition
+ * gymOutstandingBalance() sums into one gym-wide total, returned here as
+ * individual rows instead — "who owes money" (Dashboard, Gym-Admin-only,
+ * same gating as the aggregate — this is gym-wide financial data, not a
+ * single record). Reuses outstandingBalance() directly; no second
+ * calculation. Excludes cancelled memberships (same where clause as
+ * gymOutstandingBalance()) and zero/negative balances, sorted largest
+ * balance first.
+ */
+export async function listOutstandingBalances(
+  context: TenantContext,
+): Promise<OutstandingBalanceSummary[]> {
+  const rows = await withTenant(context, (tx) =>
+    tx.membership.findMany({
+      where: { gymId: context.gymId, cancelledAt: null },
+      select: {
+        id: true,
+        memberId: true,
+        planNameSnapshot: true,
+        priceMillimesSnapshot: true,
+        member: { select: { name: true, phone: true } },
+        payments: {
+          select: {
+            amountMillimes: true,
+            paidAt: true,
+            adjustments: { select: { amountMillimes: true, createdAt: true } },
+          },
+        },
+      },
+    }),
+  );
+
+  return rows
+    .map((row) => ({
+      membershipId: row.id,
+      memberId: row.memberId,
+      memberName: row.member.name,
+      memberPhone: row.member.phone,
+      planNameSnapshot: row.planNameSnapshot,
+      balanceMillimes: outstandingBalance(row.priceMillimesSnapshot, row.payments),
+    }))
+    .filter((row) => row.balanceMillimes > 0)
+    .sort((a, b) => b.balanceMillimes - a.balanceMillimes);
+}
+
 /** Rule 9: cash-basis revenue for a period, across every payment/adjustment in the gym. */
 export async function gymRevenueForPeriod(
   context: TenantContext,

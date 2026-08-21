@@ -246,6 +246,10 @@ test("Full provisioning flow: Gym Admin, Gym Staff, and gym suspension", async (
     await expect(page.getByText("Revenue", { exact: true })).toBeVisible();
     await expect(page.getByText("Total expenses")).toBeVisible();
     await expect(page.getByText("Outstanding payments")).toBeVisible();
+    // Stage 1, P1 #3: the "Who owes money" section is Gym-Admin-only, same
+    // gating as the aggregate figures above (checked again for Gym Staff's
+    // exclusion in step 8b).
+    await expect(page.getByRole("heading", { name: "Who owes money" })).toBeVisible();
     await page.goto(`/gym/${gymId}`);
 
     // 5c. Phase 8 Analytics: Gym Admin can reach /analytics and it renders
@@ -304,6 +308,10 @@ test("Full provisioning flow: Gym Admin, Gym Staff, and gym suspension", async (
     await expect(page.getByText("Revenue")).toHaveCount(0);
     await expect(page.getByText("Total expenses")).toHaveCount(0);
     await expect(page.getByText("Outstanding payments")).toHaveCount(0);
+    // Stage 1, P1 #3: same Gym-Admin-only gating as the other financial
+    // aggregates — the Staff dashboard branch never calls
+    // listOutstandingBalances() at all (structural, not merely hidden).
+    await expect(page.getByRole("heading", { name: "Who owes money" })).toHaveCount(0);
     await page.goto(`/gym/${gymId}`);
 
     // 8c. Phase 8 Analytics: Gym Staff attempting /analytics directly is

@@ -7,6 +7,8 @@ import {
   gymOutstandingBalance,
   gymRevenueForPeriod,
   gymRevenueTrend,
+  listOutstandingBalances,
+  type OutstandingBalanceSummary,
 } from "@/lib/server/services/payments";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
@@ -165,7 +167,7 @@ export default async function DashboardPage({
     );
   }
 
-  const [membershipSummary, revenue, expenses, outstanding, attendance, revenueTrend] =
+  const [membershipSummary, revenue, expenses, outstanding, attendance, revenueTrend, outstandingBalances] =
     await Promise.all([
       gymMembershipDashboardSummary(context, start, end),
       gymRevenueForPeriod(context, start, end),
@@ -173,6 +175,7 @@ export default async function DashboardPage({
       gymOutstandingBalance(context),
       gymAttendanceMetrics(context, start, end),
       gymRevenueTrend(context, trendPeriods),
+      listOutstandingBalances(context),
     ]);
 
   const revenuePoints: TrendPoint[] = revenueTrend.map((p) => ({
@@ -276,7 +279,53 @@ export default async function DashboardPage({
           <ExpiringList gymId={gymId} items={membershipSummary.expiringSoon} />
         </div>
       </section>
+
+      <section className="mt-8">
+        <h2 className="text-xs font-semibold tracking-wide text-text-tertiary uppercase">
+          Who owes money
+        </h2>
+        <div className="mt-3">
+          <OutstandingBalancesList gymId={gymId} items={outstandingBalances} />
+        </div>
+      </section>
     </main>
+  );
+}
+
+function OutstandingBalancesList({
+  gymId,
+  items,
+}: {
+  gymId: string;
+  items: OutstandingBalanceSummary[];
+}) {
+  return (
+    <Table>
+      <Thead>
+        <tr>
+          <Th>Member</Th>
+          <Th>Plan</Th>
+          <Th>Owed</Th>
+        </tr>
+      </Thead>
+      <tbody>
+        {items.map((item) => (
+          <Tr key={item.membershipId}>
+            <Td>
+              <Link
+                href={`/gym/${gymId}/members/${item.memberId}`}
+                className="font-medium text-foreground hover:text-accent"
+              >
+                {item.memberName}
+              </Link>
+            </Td>
+            <Td className="text-text-secondary">{item.planNameSnapshot}</Td>
+            <Td className="font-medium text-warning-text">{formatMillimes(item.balanceMillimes)}</Td>
+          </Tr>
+        ))}
+        {items.length === 0 && <EmptyRow colSpan={3}>Nobody currently owes a balance.</EmptyRow>}
+      </tbody>
+    </Table>
   );
 }
 
