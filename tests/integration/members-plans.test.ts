@@ -162,6 +162,84 @@ describe("Phase 3 services (members + plans)", () => {
     });
   });
 
+  // Product-completion audit, P0 #1: server-side search by name or phone.
+  describe("listMembers — search (q)", () => {
+    beforeEach(async () => {
+      await createMember(adminContext(), {
+        name: "Ahmed Ben Ali",
+        phone: "20 111 222",
+        joinDate: new Date("2026-01-01"),
+      });
+      await createMember(adminContext(), {
+        name: "Sami Trabelsi",
+        phone: "22 333 444",
+        joinDate: new Date("2026-01-02"),
+      });
+    });
+
+    it("matches a partial, case-insensitive name", async () => {
+      const results = await listMembers(adminContext(), { q: "ahmed" });
+      expect(results).toHaveLength(1);
+      expect(results[0].name).toBe("Ahmed Ben Ali");
+    });
+
+    it("matches a partial phone number regardless of formatting", async () => {
+      const results = await listMembers(adminContext(), { q: "22-333" });
+      expect(results).toHaveLength(1);
+      expect(results[0].name).toBe("Sami Trabelsi");
+    });
+
+    it("a query with no digits never matches by an empty phone filter", async () => {
+      // "Ben" has no digits — normalizePhone("Ben") === "", which must not
+      // silently become a contains-everything phone filter.
+      const results = await listMembers(adminContext(), { q: "Ben" });
+      expect(results).toHaveLength(1);
+      expect(results[0].name).toBe("Ahmed Ben Ali");
+    });
+
+    it("returns an empty list, not an error, when nothing matches", async () => {
+      const results = await listMembers(adminContext(), { q: "nonexistent-member-xyz" });
+      expect(results).toHaveLength(0);
+    });
+
+    it("an empty/whitespace query behaves like no search at all", async () => {
+      const results = await listMembers(adminContext(), { q: "   " });
+      expect(results).toHaveLength(2);
+    });
+
+    it("search still finds archived members (archive/reactivate stays reachable via search)", async () => {
+      const { id } = await createMember(adminContext(), {
+        name: "Old Timer",
+        phone: "20 555 666",
+        joinDate: new Date("2020-01-01"),
+      });
+      await archiveMember(adminContext(), id);
+
+      const results = await listMembers(adminContext(), { q: "Old Timer" });
+      expect(results).toHaveLength(1);
+      expect(results[0].archivedAt).not.toBeNull();
+    });
+
+    it("Gym Staff can search too (same as the unfiltered list)", async () => {
+      const results = await listMembers(staffContext(), { q: "Sami" });
+      expect(results).toHaveLength(1);
+    });
+
+    it("a gym cannot search into another gym's members (tenant isolation)", async () => {
+      const gymBAdmin = await seedUser(owner, "admin-b-search@test.local");
+      await seedMembership(owner, { userId: gymBAdmin.id, gymId: gymB.id, role: "GYM_ADMIN" });
+      await createMember({ userId: gymBAdmin.id, gymId: gymB.id, role: "GYM_ADMIN" }, {
+        name: "Ahmed In Gym B",
+        phone: "29 000 000",
+        joinDate: new Date(),
+      });
+
+      const results = await listMembers(adminContext(), { q: "Ahmed" });
+      expect(results).toHaveLength(1);
+      expect(results[0].name).toBe("Ahmed Ben Ali");
+    });
+  });
+
   describe("plans", () => {
     it("Gym Admin creates and lists plans, including zero-price", async () => {
       await createPlan(adminContext(), { name: "Trial", priceMillimes: 0, durationDays: 7 });

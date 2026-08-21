@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireGym, requireRole } from "@/lib/server/auth";
 import { listMembers } from "@/lib/server/services/members";
 import { gymAttendanceMetrics, listCheckinsPage } from "@/lib/server/services/attendance";
@@ -5,6 +6,7 @@ import { checkInAction, correctCheckinAction, deleteCheckinAction } from "./acti
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FormSection } from "@/components/ui/FormSection";
 import { Select } from "@/components/ui/Select";
+import { TextInput } from "@/components/ui/TextInput";
 import { Button } from "@/components/ui/Button";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { StatCard } from "@/components/ui/StatCard";
@@ -46,10 +48,10 @@ export default async function AttendancePage({
   searchParams,
 }: {
   params: Promise<{ gymId: string }>;
-  searchParams: Promise<{ error?: string; success?: string; page?: string }>;
+  searchParams: Promise<{ error?: string; success?: string; page?: string; q?: string }>;
 }) {
   const { gymId } = await params;
-  const { error, success, page: rawPage } = await searchParams;
+  const { error, success, page: rawPage, q } = await searchParams;
   const session = await requireGym(gymId);
   await requireRole("GYM_ADMIN", "GYM_STAFF");
 
@@ -62,11 +64,15 @@ export default async function AttendancePage({
   const periodEnd = endOfMonth(now);
 
   const [members, checkinsPage, metrics] = await Promise.all([
-    listMembers(context),
+    listMembers(context, { q }),
     listCheckinsPage(context, { page }),
     gymAttendanceMetrics(context, periodStart, periodEnd),
   ]);
   const checkins = checkinsPage.items;
+  // Shared by both the check-in and correct-member selects below — a single
+  // search narrows every member picker on this page (archived members were
+  // already excluded from selection before this change, unrelated to q).
+  const selectableMembers = members.filter((m) => !m.archivedAt);
 
   return (
     <main className="p-6 md:p-8">
@@ -88,19 +94,41 @@ export default async function AttendancePage({
 
       <div className="mt-8">
         <FormSection title="Check a member in" error={error}>
+          <form method="get" className="mb-3 flex flex-wrap items-end gap-2">
+            <div className="w-56">
+              <TextInput
+                label="Find a member"
+                type="search"
+                name="q"
+                defaultValue={q ?? ""}
+                placeholder="Name or phone"
+              />
+            </div>
+            <Button type="submit" variant="secondary">
+              Search
+            </Button>
+            {q && (
+              <Link
+                href={`/gym/${gymId}/attendance`}
+                className="text-sm text-text-secondary hover:text-foreground"
+              >
+                Clear
+              </Link>
+            )}
+          </form>
           <form action={checkInAction} className="flex flex-col gap-3">
             <input type="hidden" name="gymId" value={gymId} />
             <Select label="Member" name="memberId" required defaultValue="">
               <option value="" disabled>
-                Select a member
+                {selectableMembers.length === 0 && q
+                  ? `No members match "${q}"`
+                  : "Select a member"}
               </option>
-              {members
-                .filter((m) => !m.archivedAt)
-                .map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
+              {selectableMembers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
             </Select>
             <Button type="submit" variant="primary">
               Check in
@@ -164,15 +192,15 @@ export default async function AttendancePage({
                             <input type="hidden" name="checkinId" value={c.id} />
                             <Select label="Member" name="memberId" required defaultValue="">
                               <option value="" disabled>
-                                Select a member
+                                {selectableMembers.length === 0 && q
+                                  ? `No members match "${q}"`
+                                  : "Select a member"}
                               </option>
-                              {members
-                                .filter((m) => !m.archivedAt)
-                                .map((m) => (
-                                  <option key={m.id} value={m.id}>
-                                    {m.name}
-                                  </option>
-                                ))}
+                              {selectableMembers.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.name}
+                                </option>
+                              ))}
                             </Select>
                             <Button type="submit" variant="primary" className="self-start">
                               Save correction

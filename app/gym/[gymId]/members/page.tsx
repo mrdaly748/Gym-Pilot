@@ -24,14 +24,14 @@ export default async function MembersPage({
   searchParams,
 }: {
   params: Promise<{ gymId: string }>;
-  searchParams: Promise<{ error?: string; success?: string }>;
+  searchParams: Promise<{ error?: string; success?: string; q?: string }>;
 }) {
   const { gymId } = await params;
-  const { error, success } = await searchParams;
+  const { error, success, q } = await searchParams;
   const session = await requireGym(gymId);
   await requireRole("GYM_ADMIN", "GYM_STAFF");
 
-  const members = await listMembers({ userId: session.userId, gymId, role: session.role });
+  const members = await listMembers({ userId: session.userId, gymId, role: session.role }, { q });
 
   return (
     <main className="p-6 md:p-8">
@@ -66,9 +66,33 @@ export default async function MembersPage({
       </FormSection>
 
       <section className="mt-8">
-        <h2 className="text-xs font-semibold tracking-wide text-text-tertiary uppercase">
-          All members
-        </h2>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <h2 className="text-xs font-semibold tracking-wide text-text-tertiary uppercase">
+            All members
+          </h2>
+          <form method="get" className="flex flex-wrap items-end gap-2">
+            <div className="w-56">
+              <TextInput
+                label="Search"
+                type="search"
+                name="q"
+                defaultValue={q ?? ""}
+                placeholder="Name or phone"
+              />
+            </div>
+            <Button type="submit" variant="secondary">
+              Search
+            </Button>
+            {q && (
+              <Link
+                href={`/gym/${gymId}/members`}
+                className="text-sm text-text-secondary hover:text-foreground"
+              >
+                Clear
+              </Link>
+            )}
+          </form>
+        </div>
         <div className="mt-3">
           <Flash error={error} success={success} />
           <Table>
@@ -122,7 +146,11 @@ export default async function MembersPage({
                   </Td>
                 </Tr>
               ))}
-              {members.length === 0 && <EmptyRow colSpan={5}>No members yet.</EmptyRow>}
+              {members.length === 0 && (
+                <EmptyRow colSpan={5}>
+                  {q ? `No members match "${q}".` : "No members yet."}
+                </EmptyRow>
+              )}
             </tbody>
           </Table>
         </div>

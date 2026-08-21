@@ -1,6 +1,7 @@
 import "server-only";
 import { withTenant, type TenantContext } from "@/lib/server/db";
 import { NotFoundError, ValidationError } from "@/lib/server/errors";
+import { memberSearchWhereClause } from "@/lib/server/validation";
 import {
   activeMemberCount,
   addDays,
@@ -85,14 +86,27 @@ const MEMBERSHIP_SELECT = {
   freezes: { select: { frozenAt: true, resumedAt: true } },
 } as const;
 
+/**
+ * `q` (product-completion audit, P0 #1) narrows by the linked member's name
+ * or phone, reusing the exact same matching semantics listMembers() applies
+ * directly — via a nested relation filter, since Membership itself carries
+ * no searchable text of its own. Used by the Payments screen to narrow its
+ * membership picker; the general "all memberships" list (memberships/page.tsx)
+ * does not pass q, so its own behavior is unchanged.
+ */
 export async function listMemberships(
   context: TenantContext,
-  opts?: { memberId?: string },
+  opts?: { memberId?: string; q?: string },
 ): Promise<MembershipSummary[]> {
   const now = new Date();
+  const q = opts?.q?.trim();
   const rows = await withTenant(context, (tx) =>
     tx.membership.findMany({
-      where: { gymId: context.gymId, ...(opts?.memberId ? { memberId: opts.memberId } : {}) },
+      where: {
+        gymId: context.gymId,
+        ...(opts?.memberId ? { memberId: opts.memberId } : {}),
+        ...(q ? { member: memberSearchWhereClause(q) } : {}),
+      },
       select: MEMBERSHIP_SELECT,
       orderBy: { createdAt: "desc" },
     }),

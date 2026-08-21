@@ -241,6 +241,69 @@ describe("Phase 4 memberships service", () => {
     });
   });
 
+  // Product-completion audit, P0 #1: the Payments screen's membership picker
+  // narrows by the linked member's name/phone via the same matching
+  // semantics listMembers() uses, reused via a nested relation filter.
+  describe("listMemberships — search (q) narrows by the linked member's name/phone", () => {
+    it("matches by the member's name", async () => {
+      const memberB = await seedMember(owner, {
+        gymId: gymA.id,
+        name: "Zied Karray",
+        phone: "20 777 888",
+        phoneNormalized: "20777888",
+      });
+      await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id }); // Ali
+      await assignMembership(adminContext(), { memberId: memberB.id, planId: planA.id }); // Zied
+
+      const results = await listMemberships(adminContext(), { q: "Ali" });
+      expect(results).toHaveLength(1);
+      expect(results[0].memberName).toBe("Ali");
+    });
+
+    it("matches by the member's phone number", async () => {
+      await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id });
+
+      const results = await listMemberships(adminContext(), { q: "20123" });
+      expect(results).toHaveLength(1);
+      expect(results[0].memberId).toBe(memberA.id);
+    });
+
+    it("returns an empty list, not an error, when nothing matches", async () => {
+      await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id });
+
+      const results = await listMemberships(adminContext(), { q: "nobody-with-this-name" });
+      expect(results).toHaveLength(0);
+    });
+
+    it("an unfiltered call (no q) is unaffected — existing behavior is preserved", async () => {
+      await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id });
+
+      const results = await listMemberships(adminContext());
+      expect(results).toHaveLength(1);
+    });
+
+    it("search respects tenant isolation — cannot match another gym's member via q", async () => {
+      const adminB = await seedUser(owner, "admin-b-search@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+      const memberB = await seedMember(owner, {
+        gymId: gymB.id,
+        name: "Ali", // deliberately the same name as gym A's member
+        phone: "29000000",
+        phoneNormalized: "29000000",
+      });
+      const planB = await seedPlan(owner, { gymId: gymB.id, name: "Monthly" });
+      await assignMembership(
+        { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" },
+        { memberId: memberB.id, planId: planB.id },
+      );
+      await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id });
+
+      const results = await listMemberships(adminContext(), { q: "Ali" });
+      expect(results).toHaveLength(1);
+      expect(results[0].memberId).toBe(memberA.id);
+    });
+  });
+
   describe("Phase 8 — gymMembershipDashboardSummary", () => {
     it("activeMembers counts ACTIVE/EXPIRING_SOON and excludes EXPIRED/CANCELLED", async () => {
       // ACTIVE (assigned via the service — default plan duration, not near expiry).

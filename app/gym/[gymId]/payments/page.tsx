@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireGym, requireRole } from "@/lib/server/auth";
 import { listMemberships } from "@/lib/server/services/memberships";
 import { gymOutstandingBalance, listPaymentsPage } from "@/lib/server/services/payments";
@@ -59,10 +60,10 @@ export default async function PaymentsPage({
   searchParams,
 }: {
   params: Promise<{ gymId: string }>;
-  searchParams: Promise<{ error?: string; success?: string; page?: string }>;
+  searchParams: Promise<{ error?: string; success?: string; page?: string; q?: string }>;
 }) {
   const { gymId } = await params;
-  const { error, success, page: rawPage } = await searchParams;
+  const { error, success, page: rawPage, q } = await searchParams;
   const session = await requireGym(gymId);
   await requireRole("GYM_ADMIN", "GYM_STAFF");
 
@@ -72,7 +73,7 @@ export default async function PaymentsPage({
   const context = { userId: session.userId, gymId, role: session.role };
   const [paymentsPage, memberships] = await Promise.all([
     listPaymentsPage(context, { page }),
-    listMemberships(context),
+    listMemberships(context, { q }),
   ]);
   const payments = paymentsPage.items;
   const outstandingBalance =
@@ -98,11 +99,35 @@ export default async function PaymentsPage({
       )}
 
       <FormSection title="Record a payment" error={error}>
+        <form method="get" className="mb-3 flex flex-wrap items-end gap-2">
+          <div className="w-56">
+            <TextInput
+              label="Find a member"
+              type="search"
+              name="q"
+              defaultValue={q ?? ""}
+              placeholder="Name or phone"
+            />
+          </div>
+          <Button type="submit" variant="secondary">
+            Search
+          </Button>
+          {q && (
+            <Link
+              href={`/gym/${gymId}/payments`}
+              className="text-sm text-text-secondary hover:text-foreground"
+            >
+              Clear
+            </Link>
+          )}
+        </form>
         <form action={recordPaymentAction} className="flex flex-col gap-3">
           <input type="hidden" name="gymId" value={gymId} />
           <Select label="Membership" name="membershipId" required defaultValue="">
             <option value="" disabled>
-              Select a membership
+              {membershipOptions.length === 0 && q
+                ? `No memberships match "${q}"`
+                : "Select a membership"}
             </option>
             {membershipOptions.map((m) => (
               <option key={m.id} value={m.id}>

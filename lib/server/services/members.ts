@@ -1,7 +1,7 @@
 import "server-only";
 import { withTenant, type TenantContext } from "@/lib/server/db";
 import { DuplicateMemberError, NotFoundError, ValidationError } from "@/lib/server/errors";
-import { isNonEmpty, normalizePhone } from "@/lib/server/validation";
+import { isNonEmpty, memberSearchWhereClause, normalizePhone } from "@/lib/server/validation";
 
 /**
  * Gym Admin + Gym Staff member management (product-spec.md §11.1). Both
@@ -44,10 +44,15 @@ export async function getMember(
 
 export async function listMembers(
   context: TenantContext,
+  opts?: { q?: string },
 ): Promise<MemberSummary[]> {
+  const q = opts?.q?.trim();
   return withTenant(context, (tx) =>
     tx.member.findMany({
-      where: { gymId: context.gymId },
+      where: {
+        gymId: context.gymId,
+        ...(q ? memberSearchWhereClause(q) : {}),
+      },
       select: {
         id: true,
         name: true,
@@ -58,7 +63,10 @@ export async function listMembers(
         archivedAt: true,
         createdAt: true,
       },
-      orderBy: { createdAt: "desc" },
+      // Search results read best alphabetically; the default (unfiltered)
+      // list keeps its existing newest-first order so every other caller's
+      // behavior is unchanged.
+      orderBy: q ? { name: "asc" } : { createdAt: "desc" },
     }),
   );
 }

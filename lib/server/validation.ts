@@ -24,3 +24,28 @@ export function isNonEmpty(value: string): boolean {
 export function normalizePhone(phone: string): string {
   return phone.replace(/\D/g, "");
 }
+
+/**
+ * The single, reusable member-search matching semantics (product-completion
+ * audit, P0 #1: search by name or phone) — shared by every list function
+ * that offers member lookup (members.ts, memberships.ts) so "what counts as
+ * a match" is defined once, not re-decided per caller.
+ *
+ * Case-insensitive substring match on name, OR a substring match against
+ * the same normalized-digits-only phone representation duplicate detection
+ * already uses (normalizePhone) — so "20 98" and "2098" find the same
+ * members a formatting-variant duplicate check would. A query with no
+ * digits at all (e.g. a name) never adds a phone filter, which an empty
+ * `contains` would otherwise match against every row.
+ */
+export function memberSearchWhereClause(q: string): {
+  OR: ({ name: { contains: string; mode: "insensitive" } } | { phoneNormalized: { contains: string } })[];
+} {
+  const phoneDigits = normalizePhone(q);
+  return {
+    OR: [
+      { name: { contains: q, mode: "insensitive" as const } },
+      ...(phoneDigits ? [{ phoneNormalized: { contains: phoneDigits } }] : []),
+    ],
+  };
+}
