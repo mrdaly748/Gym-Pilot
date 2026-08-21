@@ -48,6 +48,12 @@ jobs:
           # generation succeed without real Supabase/DB credentials. No
           # runtime DB/Supabase calls happen during a static build.
           DATABASE_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
+          # npm's `prebuild` hook now runs `prisma generate` before this
+          # step's `next build` — prisma.config.ts resolves DIRECT_URL at
+          # config-load time even though `generate` never opens a real
+          # connection (same reasoning as the `Generate Prisma client`
+          # step above; a syntactically-valid placeholder is sufficient).
+          DIRECT_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
           NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
           NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder"
           # Phase 9: @ai-sdk/anthropic's default export only reads this at
