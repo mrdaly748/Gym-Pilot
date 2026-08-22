@@ -129,6 +129,37 @@ describe("Phase 7 trainers service", () => {
       expect(members).toHaveLength(1);
       expect(members[0].memberId).toBe(memberA.id);
     });
+
+    it("rejects archiving a trainer from another gym (app-layer scoping)", async () => {
+      const adminB = await seedUser(owner, "admin-b-archive-trainer@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+
+      await expect(
+        archiveTrainer({ userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" }, trainer.id),
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it("rejects archiving an unknown trainer id", async () => {
+      await expect(
+        archiveTrainer(adminContext(), "00000000-0000-0000-0000-000000000000"),
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it("rejects reactivating a trainer from another gym (app-layer scoping)", async () => {
+      await archiveTrainer(adminContext(), trainer.id);
+      const adminB = await seedUser(owner, "admin-b-reactivate-trainer@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+
+      await expect(
+        reactivateTrainer({ userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" }, trainer.id),
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it("rejects reactivating an unknown trainer id", async () => {
+      await expect(
+        reactivateTrainer(adminContext(), "00000000-0000-0000-0000-000000000000"),
+      ).rejects.toThrow(NotFoundError);
+    });
   });
 
   describe("member-trainer association", () => {
@@ -202,6 +233,30 @@ describe("Phase 7 trainers service", () => {
       await expect(
         assignTrainerToMember(adminContext(), trainer.id, memberB.id),
       ).rejects.toThrow(NotFoundError);
+    });
+
+    it("rejects a trainer from another gym, even against a member in the caller's own gym", async () => {
+      const trainerB = await seedTrainer(owner, { gymId: gymB.id, name: "Coach B" });
+      await expect(
+        assignTrainerToMember(adminContext(), trainerB.id, memberA.id),
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it("rejects unassigning a trainer-member link that belongs to another gym", async () => {
+      await assignTrainerToMember(adminContext(), trainer.id, memberA.id);
+      const adminB = await seedUser(owner, "admin-b-unassign@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+
+      await expect(
+        unassignTrainerFromMember(
+          { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" },
+          trainer.id,
+          memberA.id,
+        ),
+      ).rejects.toThrow(NotFoundError);
+
+      // The link must still exist in gym A — the cross-gym attempt did nothing.
+      expect(await listMembersForTrainer(adminContext(), trainer.id)).toHaveLength(1);
     });
   });
 

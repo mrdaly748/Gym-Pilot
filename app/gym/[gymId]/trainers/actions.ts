@@ -107,7 +107,7 @@ export async function assignTrainerAction(formData: FormData): Promise<void> {
     redirect(`/gym/${gymId}/trainers?error=${encodeURIComponent(message)}`);
   }
 
-  redirect(`/gym/${gymId}/trainers`);
+  redirect(`/gym/${gymId}/trainers?success=${encodeURIComponent("Trainer assigned.")}`);
 }
 
 export async function unassignTrainerAction(formData: FormData): Promise<void> {
@@ -122,5 +122,5 @@ export async function unassignTrainerAction(formData: FormData): Promise<void> {
     trainerId,
     memberId,
   );
-  redirect(`/gym/${gymId}/trainers`);
+  redirect(`/gym/${gymId}/trainers?success=${encodeURIComponent("Trainer unassigned.")}`);
 }

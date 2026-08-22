@@ -132,7 +132,7 @@ export default async function DashboardPage({
       <main className="p-6 md:p-8">
         <PageHeader title="Dashboard" backHref={`/gym/${gymId}`} backLabel="Gym" />
 
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-4">
           <StatCard
             label="Today's check-ins"
             value={String(todayAttendance.totalCheckins)}

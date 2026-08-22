@@ -176,7 +176,8 @@ test("Platform Admin can create a gym, and it appears in the gym list", async ({
       .fill(`e2e-admin-${Date.now()}@example.invalid`);
     await page.getByRole("button", { name: /Create gym/ }).click();
 
-    await expect(page).toHaveURL("/platform/gyms");
+    await expect(page).toHaveURL(/\/platform\/gyms/);
+    await expect(page.getByRole("status")).toHaveText("Gym created.");
     await expect(page.getByText(gymName)).toBeVisible();
   } finally {
     await cleanupGymByName(gymName);
@@ -217,7 +218,8 @@ test("Full provisioning flow: Gym Admin, Gym Staff, and gym suspension", async (
     await page.getByLabel("Gym name").fill(gymName);
     await page.getByLabel("Initial Gym Admin email").fill(gymAdminEmail);
     await page.getByRole("button", { name: /Create gym/ }).click();
-    await expect(page).toHaveURL("/platform/gyms");
+    await expect(page).toHaveURL(/\/platform\/gyms/);
+    await expect(page.getByRole("status")).toHaveText("Gym created.");
     await expect(page.getByText(gymName)).toBeVisible();
 
     // /platform/gyms has no logout button of its own — only /platform does.
@@ -343,6 +345,7 @@ test("Full provisioning flow: Gym Admin, Gym Staff, and gym suspension", async (
     await row.getByRole("button", { name: "Suspend" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Suspend" }).click();
     await expect(row.getByText("SUSPENDED")).toBeVisible();
+    await expect(page.getByRole("status")).toHaveText("Gym suspended.");
 
     // /platform/gyms has no logout button of its own — only /platform does.
     await page.goto("/platform");

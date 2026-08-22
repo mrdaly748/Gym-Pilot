@@ -142,10 +142,12 @@ export default function Home() {
             Everything your gym needs
           </h2>
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {FEATURES.map((feature) => (
+            {FEATURES.map((feature, index) => (
               <div
                 key={feature.title}
-                className="rounded-lg border border-border-subtle bg-surface-2 p-5"
+                className={`rounded-lg border border-border-subtle bg-surface-2 p-5 ${
+                  index === FEATURES.length - 1 ? "lg:col-start-2" : ""
+                }`}
               >
                 <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent-soft-bg text-accent">
                   <feature.icon className="h-4.5 w-4.5" />

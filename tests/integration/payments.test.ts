@@ -107,6 +107,15 @@ describe("Phase 5 payments service", () => {
       ).rejects.toThrow(ValidationError);
     });
 
+    it("rejects a missing/empty payment method", async () => {
+      await expect(
+        recordPayment(adminContext(), { membershipId, amountMillimes: 20000, method: "" }),
+      ).rejects.toThrow(ValidationError);
+      await expect(
+        recordPayment(adminContext(), { membershipId, amountMillimes: 20000, method: "   " }),
+      ).rejects.toThrow(ValidationError);
+    });
+
     it("rejects a payment against a membership in another gym", async () => {
       const memberB = await seedMember(owner, {
         gymId: gymB.id,

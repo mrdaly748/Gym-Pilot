@@ -15,7 +15,7 @@ import {
   type SeededPlan,
   type SeededUser,
 } from "../helpers/testDb";
-import { prisma } from "@/lib/server/db";
+import { prisma, withTenant } from "@/lib/server/db";
 import {
   correctCheckin,
   deleteCheckin,
@@ -157,6 +157,117 @@ describe("Phase 6 attendance service", () => {
         phoneNormalized: "20888888",
       });
       await expect(recordCheckin(adminContext(), memberB.id)).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  describe("recordCheckin — one check-in per member per calendar day", () => {
+    it("allows the first check-in for a member on a given day", async () => {
+      const result = await recordCheckin(adminContext(), memberA.id);
+      expect(result.id).toBeDefined();
+    });
+
+    it("rejects a second check-in for the same member on the same calendar day", async () => {
+      await recordCheckin(adminContext(), memberA.id);
+
+      await expect(recordCheckin(staffContext(), memberA.id)).rejects.toThrow(ValidationError);
+      await expect(recordCheckin(adminContext(), memberA.id)).rejects.toThrow(
+        "This member has already checked in today.",
+      );
+
+      const rows = await listCheckins(adminContext(), { memberId: memberA.id });
+      expect(rows).toHaveLength(1);
+    });
+
+    it("allows a check-in on a different calendar day", async () => {
+      await seedCheckin(owner, {
+        gymId: gymA.id,
+        memberId: memberA.id,
+        checkedInAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        recordedByUserId: adminA.id,
+      });
+
+      const result = await recordCheckin(adminContext(), memberA.id);
+      expect(result.id).toBeDefined();
+
+      const rows = await listCheckins(adminContext(), { memberId: memberA.id });
+      expect(rows).toHaveLength(2);
+    });
+
+    it("allows a different member to check in on the same day", async () => {
+      const memberC = await seedMember(owner, {
+        gymId: gymA.id,
+        name: "Other",
+        phone: "20777777",
+        phoneNormalized: "20777777",
+      });
+      await recordCheckin(adminContext(), memberA.id);
+      const result = await recordCheckin(adminContext(), memberC.id);
+      expect(result.id).toBeDefined();
+    });
+
+    it("remains gym-scoped: a member in another gym can check in the same day unaffected", async () => {
+      const adminB = await seedUser(owner, "admin-b-attendance@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+      const memberB = await seedMember(owner, {
+        gymId: gymB.id,
+        name: "Sami",
+        phone: "20888888",
+        phoneNormalized: "20888888",
+      });
+
+      await recordCheckin(adminContext(), memberA.id);
+      const result = await recordCheckin(
+        { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" },
+        memberB.id,
+      );
+      expect(result.id).toBeDefined();
+    });
+
+    it("the database's own unique index rejects a duplicate row even when the app-layer pre-check is bypassed", async () => {
+      const now = new Date();
+      await withTenant(adminContext(), (tx) =>
+        tx.attendanceCheckin.create({
+          data: {
+            gymId: gymA.id,
+            memberId: memberA.id,
+            checkedInAt: now,
+            recordedByUserId: adminA.id,
+          },
+        }),
+      );
+
+      await expect(
+        withTenant(adminContext(), (tx) =>
+          tx.attendanceCheckin.create({
+            data: {
+              gymId: gymA.id,
+              memberId: memberA.id,
+              checkedInAt: now,
+              recordedByUserId: adminA.id,
+            },
+          }),
+        ),
+      ).rejects.toThrow(/unique constraint/i);
+    });
+
+    it("a genuine race (two concurrent check-ins) still results in exactly one row, and the loser sees the same ValidationError as the pre-check path", async () => {
+      const results = await Promise.allSettled([
+        recordCheckin(adminContext(), memberA.id),
+        recordCheckin(staffContext(), memberA.id),
+      ]);
+
+      const fulfilled = results.filter((r) => r.status === "fulfilled");
+      const rejected = results.filter((r) => r.status === "rejected");
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      const rejection = rejected[0] as PromiseRejectedResult;
+      expect(rejection.reason).toBeInstanceOf(ValidationError);
+      expect((rejection.reason as ValidationError).message).toBe(
+        "This member has already checked in today.",
+      );
+
+      const rows = await listCheckins(adminContext(), { memberId: memberA.id });
+      expect(rows).toHaveLength(1);
     });
   });
 
@@ -307,7 +418,11 @@ describe("Phase 6 attendance service", () => {
         await seedCheckin(owner, {
           gymId: gymA.id,
           memberId: memberA.id,
-          checkedInAt: new Date(2026, 0, 1, 0, 0, i), // distinct checkedInAt per row
+          // Distinct calendar day per row (not just distinct time-of-day) —
+          // one check-in per member per day is now enforced by a real
+          // database constraint (see the attendance_one_checkin_per_day
+          // migration), so 30 rows for one member need 30 different days.
+          checkedInAt: new Date(2026, 0, 1 + i),
           recordedByUserId: adminA.id,
         });
       }

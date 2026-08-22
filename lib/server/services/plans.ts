@@ -40,16 +40,32 @@ export async function listPlans(context: TenantContext): Promise<PlanSummary[]> 
   );
 }
 
-export type CreatePlanInput = {
+export async function getPlan(
+  context: TenantContext,
+  planId: string,
+): Promise<PlanSummary | null> {
+  return withTenant(context, (tx) =>
+    tx.membershipPlan.findFirst({
+      where: { id: planId, gymId: context.gymId },
+      select: {
+        id: true,
+        name: true,
+        priceMillimes: true,
+        durationDays: true,
+        archivedAt: true,
+        createdAt: true,
+      },
+    }),
+  );
+}
+
+export type PlanInput = {
   name: string;
   priceMillimes: number;
   durationDays: number;
 };
 
-export async function createPlan(
-  context: TenantContext,
-  input: CreatePlanInput,
-): Promise<{ id: string }> {
+function validatePlanInput(input: PlanInput): { name: string } {
   const name = input.name.trim();
   if (!isNonEmpty(name)) {
     throw new ValidationError("Plan name is required.");
@@ -60,6 +76,16 @@ export async function createPlan(
   if (!Number.isInteger(input.durationDays) || input.durationDays <= 0) {
     throw new ValidationError("Duration must be a positive whole number of days.");
   }
+  return { name };
+}
+
+export type CreatePlanInput = PlanInput;
+
+export async function createPlan(
+  context: TenantContext,
+  input: CreatePlanInput,
+): Promise<{ id: string }> {
+  const { name } = validatePlanInput(input);
 
   return withTenant(context, (tx) =>
     tx.membershipPlan.create({
@@ -72,6 +98,37 @@ export async function createPlan(
       select: { id: true },
     }),
   );
+}
+
+/**
+ * Edits a plan's name/price/duration. Existing memberships are unaffected —
+ * price/duration/name are snapshotted onto the Membership row at assignment
+ * time (see memberships.ts), so correcting a plan here never retroactively
+ * changes an already-sold membership (product-spec.md §18). Mirrors
+ * updateMember()/updateTrainer(): an archived plan can still be edited (the
+ * same convention those two services already use — archiving only hides a
+ * record from *new* selections, it doesn't freeze its own fields).
+ */
+export async function updatePlan(
+  context: TenantContext,
+  planId: string,
+  input: PlanInput,
+): Promise<void> {
+  const { name } = validatePlanInput(input);
+
+  const result = await withTenant(context, (tx) =>
+    tx.membershipPlan.updateMany({
+      where: { id: planId, gymId: context.gymId },
+      data: {
+        name,
+        priceMillimes: input.priceMillimes,
+        durationDays: input.durationDays,
+      },
+    }),
+  );
+  if (result.count === 0) {
+    throw new NotFoundError("Plan not found in this gym.");
+  }
 }
 
 export async function archivePlan(

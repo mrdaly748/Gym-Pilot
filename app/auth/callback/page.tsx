@@ -98,7 +98,7 @@ function AuthCallbackInner() {
 
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center justify-center gap-4 p-8">
-      <p className="text-sm text-gray-600" role="status">
+      <p className="text-sm text-text-secondary" role="status">
         {failed ? "Something went wrong. Redirecting…" : "Signing you in…"}
       </p>
     </main>

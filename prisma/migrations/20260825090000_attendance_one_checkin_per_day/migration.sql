@@ -1,0 +1,29 @@
+-- Business rule (MVP hardening pass): at most one check-in per member per
+-- gym per calendar day. lib/server/services/attendance.ts's recordCheckin()
+-- already checks for an existing same-day check-in before inserting, but
+-- that check-then-insert is not atomic on its own — two concurrent requests
+-- could both pass the check before either commits. This unique index is the
+-- actual, final authority: Postgres itself rejects the second row, and the
+-- service layer translates the resulting P2002 error into the same
+-- ValidationError callers already get from the pre-check, so the race and
+-- the common case are indistinguishable to the caller.
+--
+-- Expression index, not a new column: checked_in_at is
+-- "timestamp without time zone" (Phase 6 migration) — casting it to ::date
+-- here extracts the literal stored calendar date with no timezone
+-- reinterpretation in either direction (there is no zone information on the
+-- column to convert from), matching exactly the "local calendar day"
+-- convention the application already uses elsewhere (e.g. the dashboard's
+-- startOfToday()/endOfToday() helpers, app/gym/[gymId]/dashboard/page.tsx).
+-- A generated column was considered and rejected in favor of this: an
+-- expression index gives the same guarantee without adding a column the
+-- rest of the schema/generated Prisma client would need to account for —
+-- the same reasoning already applied to RLS policies (raw SQL, not
+-- representable in schema.prisma, same discipline since Phase 1).
+--
+-- Vanilla PostgreSQL feature (CREATE UNIQUE INDEX ... ON expression), no
+-- extension required — supported by every Postgres this project targets
+-- (the local embedded-postgres 18 test substrate, CI's postgres:16 service
+-- container, and the hosted Supabase project).
+CREATE UNIQUE INDEX "attendance_checkins_one_per_member_per_day"
+  ON "attendance_checkins" ("gym_id", "member_id", (("checked_in_at")::date));

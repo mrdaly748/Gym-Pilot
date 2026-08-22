@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI Gym SaaS",
-  description: "Gym management platform",
+  title: "GymPilot",
+  description: "Run your gym smarter — members, memberships, payments, attendance, and trainers in one place.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

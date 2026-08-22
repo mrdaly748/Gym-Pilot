@@ -35,6 +35,7 @@ describe("attendance_checkins isolation", () => {
   let platformAdmin: SeededUser;
   let memberA: SeededMember;
   let memberB: SeededMember;
+  let memberC: SeededMember;
   let checkinId: string;
 
   beforeAll(() => {
@@ -68,6 +69,16 @@ describe("attendance_checkins isolation", () => {
       name: "Member B",
       phone: "20654321",
       phoneNormalized: "20654321",
+    });
+    // Distinct from memberA, who already gets a check-in seeded below —
+    // the "CAN insert" tests need a member with no existing check-in today,
+    // since attendance_checkins_one_per_member_per_day now enforces at most
+    // one per member per day.
+    memberC = await seedMember(owner, {
+      gymId: gymA.id,
+      name: "Member C",
+      phone: "20111222",
+      phoneNormalized: "20111222",
     });
     const checkin = await seedCheckin(owner, {
       gymId: gymA.id,
@@ -117,7 +128,7 @@ describe("attendance_checkins isolation", () => {
       (client) =>
         client.query(
           "INSERT INTO attendance_checkins (gym_id, member_id, recorded_by_user_id) VALUES ($1, $2, $3)",
-          [gymA.id, memberA.id, staffA.id],
+          [gymA.id, memberC.id, staffA.id],
         ),
     );
     expect(result.rowCount).toBe(1);
@@ -160,7 +171,7 @@ describe("attendance_checkins isolation", () => {
       (client) =>
         client.query(
           "INSERT INTO attendance_checkins (gym_id, member_id, recorded_by_user_id) VALUES ($1, $2, $3)",
-          [gymA.id, memberA.id, adminA.id],
+          [gymA.id, memberC.id, adminA.id],
         ),
     );
     expect(result.rowCount).toBe(1);

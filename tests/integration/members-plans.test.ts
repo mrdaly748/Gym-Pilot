@@ -19,7 +19,7 @@ import {
   reactivateMember,
   updateMember,
 } from "@/lib/server/services/members";
-import { archivePlan, createPlan, listPlans } from "@/lib/server/services/plans";
+import { archivePlan, createPlan, getPlan, listPlans, updatePlan } from "@/lib/server/services/plans";
 import { DuplicateMemberError, NotFoundError, ValidationError } from "@/lib/server/errors";
 
 describe("Phase 3 services (members + plans)", () => {
@@ -156,9 +156,36 @@ describe("Phase 3 services (members + plans)", () => {
       ).rejects.toThrow(NotFoundError);
     });
 
+    it("rejects reactivating a member from another gym (NotFoundError, app-layer scoping)", async () => {
+      const gymBAdmin = await seedUser(owner, "admin-b-reactivate@test.local");
+      await seedMembership(owner, { userId: gymBAdmin.id, gymId: gymB.id, role: "GYM_ADMIN" });
+      const { id } = await createMember(adminContext(), {
+        name: "Ali",
+        phone: "20123456",
+        joinDate: new Date(),
+      });
+      await archiveMember(adminContext(), id);
+
+      await expect(
+        reactivateMember({ userId: gymBAdmin.id, gymId: gymB.id, role: "GYM_ADMIN" }, id),
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it("rejects reactivating an unknown member id", async () => {
+      await expect(
+        reactivateMember(adminContext(), "00000000-0000-0000-0000-000000000000"),
+      ).rejects.toThrow(NotFoundError);
+    });
+
     it("rejects an empty name", async () => {
       await expect(
         createMember(adminContext(), { name: "  ", phone: "20123456", joinDate: new Date() }),
+      ).rejects.toThrow(ValidationError);
+    });
+
+    it("rejects an invalid phone number (empty after normalization)", async () => {
+      await expect(
+        createMember(adminContext(), { name: "Ali", phone: "abc", joinDate: new Date() }),
       ).rejects.toThrow(ValidationError);
     });
   });
@@ -319,6 +346,157 @@ describe("Phase 3 services (members + plans)", () => {
       await expect(
         createPlan(adminContext(), { name: "Bad", priceMillimes: -1, durationDays: 30 }),
       ).rejects.toThrow(ValidationError);
+    });
+
+    it("rejects a non-positive duration", async () => {
+      await expect(
+        createPlan(adminContext(), { name: "Bad", priceMillimes: 50000, durationDays: 0 }),
+      ).rejects.toThrow(ValidationError);
+    });
+
+    it("rejects archiving an already-archived plan", async () => {
+      const { id } = await createPlan(adminContext(), {
+        name: "Monthly",
+        priceMillimes: 50000,
+        durationDays: 30,
+      });
+      await archivePlan(adminContext(), id);
+
+      await expect(archivePlan(adminContext(), id)).rejects.toThrow(NotFoundError);
+    });
+
+    it("rejects archiving a plan from another gym (app-layer scoping)", async () => {
+      const gymBAdmin = await seedUser(owner, "admin-b-archive-plan@test.local");
+      await seedMembership(owner, { userId: gymBAdmin.id, gymId: gymB.id, role: "GYM_ADMIN" });
+      const { id } = await createPlan(adminContext(), {
+        name: "Monthly",
+        priceMillimes: 50000,
+        durationDays: 30,
+      });
+
+      await expect(
+        archivePlan({ userId: gymBAdmin.id, gymId: gymB.id, role: "GYM_ADMIN" }, id),
+      ).rejects.toThrow(NotFoundError);
+
+      const plans = await listPlans(adminContext());
+      expect(plans.find((p) => p.id === id)?.archivedAt).toBeNull();
+    });
+
+    it("a gym cannot list another gym's plans at the service layer (tenant isolation)", async () => {
+      const gymBAdmin = await seedUser(owner, "admin-b-list-plans@test.local");
+      await seedMembership(owner, { userId: gymBAdmin.id, gymId: gymB.id, role: "GYM_ADMIN" });
+      await createPlan(adminContext(), { name: "Gym A Plan", priceMillimes: 50000, durationDays: 30 });
+
+      const gymBPlans = await listPlans({ userId: gymBAdmin.id, gymId: gymB.id, role: "GYM_ADMIN" });
+      expect(gymBPlans).toHaveLength(0);
+    });
+
+    describe("updatePlan", () => {
+      it("updates name, price, and duration", async () => {
+        const { id } = await createPlan(adminContext(), {
+          name: "Monthly",
+          priceMillimes: 50000,
+          durationDays: 30,
+        });
+
+        await updatePlan(adminContext(), id, {
+          name: "Monthly (updated)",
+          priceMillimes: 60000,
+          durationDays: 31,
+        });
+
+        const plan = await getPlan(adminContext(), id);
+        expect(plan?.name).toBe("Monthly (updated)");
+        expect(plan?.priceMillimes).toBe(60000);
+        expect(plan?.durationDays).toBe(31);
+      });
+
+      it("rejects an empty name", async () => {
+        const { id } = await createPlan(adminContext(), {
+          name: "Monthly",
+          priceMillimes: 50000,
+          durationDays: 30,
+        });
+
+        await expect(
+          updatePlan(adminContext(), id, { name: "  ", priceMillimes: 50000, durationDays: 30 }),
+        ).rejects.toThrow(ValidationError);
+      });
+
+      it("rejects a negative price", async () => {
+        const { id } = await createPlan(adminContext(), {
+          name: "Monthly",
+          priceMillimes: 50000,
+          durationDays: 30,
+        });
+
+        await expect(
+          updatePlan(adminContext(), id, { name: "Monthly", priceMillimes: -1, durationDays: 30 }),
+        ).rejects.toThrow(ValidationError);
+      });
+
+      it("rejects a non-positive duration", async () => {
+        const { id } = await createPlan(adminContext(), {
+          name: "Monthly",
+          priceMillimes: 50000,
+          durationDays: 30,
+        });
+
+        await expect(
+          updatePlan(adminContext(), id, { name: "Monthly", priceMillimes: 50000, durationDays: 0 }),
+        ).rejects.toThrow(ValidationError);
+      });
+
+      it("throws NotFoundError for an unknown plan id", async () => {
+        await expect(
+          updatePlan(adminContext(), "00000000-0000-0000-0000-000000000000", {
+            name: "Monthly",
+            priceMillimes: 50000,
+            durationDays: 30,
+          }),
+        ).rejects.toThrow(NotFoundError);
+      });
+
+      it("rejects updating a plan in another gym (NotFoundError, app-layer scoping)", async () => {
+        const gymBAdmin = await seedUser(owner, "admin-b-plans@test.local");
+        await seedMembership(owner, { userId: gymBAdmin.id, gymId: gymB.id, role: "GYM_ADMIN" });
+        const { id } = await createPlan(adminContext(), {
+          name: "Monthly",
+          priceMillimes: 50000,
+          durationDays: 30,
+        });
+
+        await expect(
+          updatePlan({ userId: gymBAdmin.id, gymId: gymB.id, role: "GYM_ADMIN" }, id, {
+            name: "Hijacked",
+            priceMillimes: 1,
+            durationDays: 1,
+          }),
+        ).rejects.toThrow(NotFoundError);
+
+        const plan = await getPlan(adminContext(), id);
+        expect(plan?.name).toBe("Monthly");
+      });
+
+      it("allows editing an archived plan (matches updateMember/updateTrainer behavior)", async () => {
+        const { id } = await createPlan(adminContext(), {
+          name: "Old Trial",
+          priceMillimes: 0,
+          durationDays: 7,
+        });
+        await archivePlan(adminContext(), id);
+
+        await updatePlan(adminContext(), id, {
+          name: "Old Trial (corrected)",
+          priceMillimes: 0,
+          durationDays: 14,
+        });
+
+        const plan = await getPlan(adminContext(), id);
+        expect(plan?.name).toBe("Old Trial (corrected)");
+        expect(plan?.durationDays).toBe(14);
+        expect(plan?.archivedAt).not.toBeNull();
+      });
     });
   });
 });

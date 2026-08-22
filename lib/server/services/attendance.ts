@@ -1,6 +1,6 @@
 import "server-only";
 import { withTenant, type TenantContext } from "@/lib/server/db";
-import type { Prisma } from "@/lib/server/generated/prisma-client/client";
+import { Prisma } from "@/lib/server/generated/prisma-client/client";
 import { NotFoundError, ValidationError } from "@/lib/server/errors";
 import {
   deriveMembershipStatus,
@@ -214,17 +214,44 @@ export type RecordCheckinResult = {
 };
 
 /**
+ * The same "local calendar day" boundary the rest of the app already uses
+ * (e.g. app/gym/[gymId]/dashboard/page.tsx's startOfToday()/endOfToday()) —
+ * plain Date-component construction, not a UTC/timezone conversion. Kept
+ * here rather than in metrics.ts since it's specific to this one rule, not
+ * a canonical business metric shared across screens.
+ */
+function calendarDayRange(date: Date): { start: Date; end: Date } {
+  return {
+    start: new Date(date.getFullYear(), date.getMonth(), date.getDate()),
+    end: new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999),
+  };
+}
+
+const ALREADY_CHECKED_IN_TODAY_MESSAGE = "This member has already checked in today.";
+
+/**
  * Records a check-in. Never blocked by membership status — active,
  * expiring, expired, frozen, cancelled, or no membership at all are all
  * accepted (product-spec.md §18); the current status is only ever surfaced,
  * never enforced. Archived members are rejected: an archived member record
  * is no longer a current customer, distinct from "membership" status.
+ *
+ * At most one check-in per member per calendar day (MVP hardening pass —
+ * intentional product decision, not derived from product-spec.md). The
+ * findFirst() below handles the common case with a clear error before any
+ * write is attempted; it is not atomic by itself, so the actual, final
+ * authority is the database's own unique index (see the migration this
+ * commit adds) — the try/catch around create() below exists specifically
+ * to translate that race's raw Postgres/Prisma error into the exact same
+ * ValidationError the pre-check throws, so callers never see a difference
+ * between "caught early" and "caught by the database."
  */
 export async function recordCheckin(
   context: TenantContext,
   memberId: string,
 ): Promise<RecordCheckinResult> {
   const now = new Date();
+  const { start: dayStart, end: dayEnd } = calendarDayRange(now);
 
   return withTenant(context, async (tx) => {
     const member = await tx.member.findFirst({
@@ -237,6 +264,18 @@ export async function recordCheckin(
       throw new ValidationError("Cannot check in an archived member.");
     }
 
+    const existingToday = await tx.attendanceCheckin.findFirst({
+      where: {
+        gymId: context.gymId,
+        memberId,
+        checkedInAt: { gte: dayStart, lte: dayEnd },
+      },
+      select: { id: true },
+    });
+    if (existingToday) {
+      throw new ValidationError(ALREADY_CHECKED_IN_TODAY_MESSAGE);
+    }
+
     const membershipStatus = await currentMembershipStatus(
       tx,
       context.gymId,
@@ -244,15 +283,23 @@ export async function recordCheckin(
       now,
     );
 
-    const created = await tx.attendanceCheckin.create({
-      data: {
-        gymId: context.gymId,
-        memberId,
-        checkedInAt: now,
-        recordedByUserId: context.userId,
-      },
-      select: { id: true },
-    });
+    let created: { id: string };
+    try {
+      created = await tx.attendanceCheckin.create({
+        data: {
+          gymId: context.gymId,
+          memberId,
+          checkedInAt: now,
+          recordedByUserId: context.userId,
+        },
+        select: { id: true },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new ValidationError(ALREADY_CHECKED_IN_TODAY_MESSAGE);
+      }
+      throw error;
+    }
 
     return { id: created.id, membershipStatus };
   });

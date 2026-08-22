@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireGym, requireRole } from "@/lib/server/auth";
 import { listPlans } from "@/lib/server/services/plans";
@@ -91,7 +92,14 @@ export default async function MembershipPlansPage({
             <tbody>
               {plans.map((plan) => (
                 <Tr key={plan.id}>
-                  <Td className="font-medium">{plan.name}</Td>
+                  <Td>
+                    <Link
+                      href={`/gym/${gymId}/memberships/plans/${plan.id}/edit`}
+                      className="font-medium text-foreground hover:text-accent"
+                    >
+                      {plan.name}
+                    </Link>
+                  </Td>
                   <Td className="text-text-secondary">{formatPrice(plan.priceMillimes)}</Td>
                   <Td className="text-text-secondary">{plan.durationDays} days</Td>
                   <Td>

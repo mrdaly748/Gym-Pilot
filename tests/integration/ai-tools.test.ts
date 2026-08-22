@@ -4,6 +4,8 @@ import type { ToolExecutionOptions } from "ai";
 import {
   getOwnerPool,
   resetTestData,
+  seedCheckin,
+  seedExpense,
   seedGym,
   seedMember,
   seedMembership,
@@ -120,6 +122,185 @@ describe("Phase 9 AI tool layer", () => {
     };
     expect(result.activeCount).toBe(1);
     expect(result.names).toEqual(["Coach Sam"]);
+  });
+
+  it("compareRevenuePeriods computes hand-computed this-month vs last-month revenue and percent change", async () => {
+    const membership = await seedMembershipRecord(owner, {
+      gymId: gymA.id,
+      memberId: memberA.id,
+      planId: planA.id,
+      startDate: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
+      endDate: new Date(Date.now() + 300 * 24 * 60 * 60 * 1000),
+    });
+    const now = new Date();
+    const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 15);
+
+    await seedPayment(owner, {
+      gymId: gymA.id,
+      membershipId: membership.id,
+      amountMillimes: 60000,
+      paidAt: now,
+      recordedByUserId: adminA.id,
+    });
+    await seedPayment(owner, {
+      gymId: gymA.id,
+      membershipId: membership.id,
+      amountMillimes: 30000,
+      paidAt: lastMonthDate,
+      recordedByUserId: adminA.id,
+    });
+
+    const tools = buildAiTools(adminContext());
+    const result = (await tools.compareRevenuePeriods.execute!({}, execOptions)) as {
+      thisMonthRevenueTND: number;
+      lastMonthRevenueTND: number;
+      percentChange: number | null;
+    };
+
+    expect(result.thisMonthRevenueTND).toBe(60);
+    expect(result.lastMonthRevenueTND).toBe(30);
+    expect(result.percentChange).toBeCloseTo((60 - 30) / 30); // hand-computed: +100%
+  });
+
+  it("getRevenueTrend returns 6 months of hand-computed revenue, ending with the current month", async () => {
+    const membership = await seedMembershipRecord(owner, {
+      gymId: gymA.id,
+      memberId: memberA.id,
+      planId: planA.id,
+      startDate: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
+      endDate: new Date(Date.now() + 300 * 24 * 60 * 60 * 1000),
+    });
+    const now = new Date();
+    await seedPayment(owner, {
+      gymId: gymA.id,
+      membershipId: membership.id,
+      amountMillimes: 75000,
+      paidAt: now,
+      recordedByUserId: adminA.id,
+    });
+
+    const tools = buildAiTools(adminContext());
+    const result = (await tools.getRevenueTrend.execute!({}, execOptions)) as {
+      month: string;
+      revenueTND: number;
+    }[];
+
+    expect(result).toHaveLength(6);
+    const currentMonthLabel = now.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+    const last = result[result.length - 1];
+    expect(last.month).toBe(currentMonthLabel);
+    expect(last.revenueTND).toBe(75);
+    for (const point of result.slice(0, -1)) {
+      expect(point.revenueTND).toBe(0);
+    }
+  });
+
+  it("getExpensesTrend returns 6 months of hand-computed expenses, ending with the current month", async () => {
+    const now = new Date();
+    await seedExpense(owner, {
+      gymId: gymA.id,
+      category: "rent",
+      amountMillimes: 120000,
+      expenseDate: now,
+      recordedByUserId: adminA.id,
+    });
+
+    const tools = buildAiTools(adminContext());
+    const result = (await tools.getExpensesTrend.execute!({}, execOptions)) as {
+      month: string;
+      expensesTND: number;
+    }[];
+
+    expect(result).toHaveLength(6);
+    const currentMonthLabel = now.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+    const last = result[result.length - 1];
+    expect(last.month).toBe(currentMonthLabel);
+    expect(last.expensesTND).toBe(120);
+    for (const point of result.slice(0, -1)) {
+      expect(point.expensesTND).toBe(0);
+    }
+  });
+
+  it("getAttendanceTrend returns hand-computed total/unique-visitor counts, ending with the current month", async () => {
+    const now = new Date();
+    const memberC = await seedMember(owner, {
+      gymId: gymA.id,
+      name: "Other",
+      phone: "20777777",
+      phoneNormalized: "20777777",
+    });
+    await seedCheckin(owner, {
+      gymId: gymA.id,
+      memberId: memberA.id,
+      checkedInAt: now,
+      recordedByUserId: adminA.id,
+    });
+    await seedCheckin(owner, {
+      gymId: gymA.id,
+      memberId: memberC.id,
+      checkedInAt: now,
+      recordedByUserId: adminA.id,
+    });
+
+    const tools = buildAiTools(adminContext());
+    const result = (await tools.getAttendanceTrend.execute!({}, execOptions)) as {
+      month: string;
+      totalCheckins: number;
+      uniqueVisitors: number;
+    }[];
+
+    expect(result).toHaveLength(6);
+    const last = result[result.length - 1];
+    expect(last.totalCheckins).toBe(2);
+    expect(last.uniqueVisitors).toBe(2);
+  });
+
+  it("getMembershipGrowthTrend returns hand-computed active-member counts, ending with the current month", async () => {
+    const now = new Date();
+    await seedMembershipRecord(owner, {
+      gymId: gymA.id,
+      memberId: memberA.id,
+      planId: planA.id,
+      startDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+      endDate: new Date(now.getFullYear(), now.getMonth() + 2, 1),
+    });
+
+    const tools = buildAiTools(adminContext());
+    const result = (await tools.getMembershipGrowthTrend.execute!({}, execOptions)) as {
+      month: string;
+      activeMembers: number;
+    }[];
+
+    expect(result).toHaveLength(6);
+    const last = result[result.length - 1];
+    expect(last.activeMembers).toBe(1);
+    // 5 months before the current month, this membership hadn't started yet.
+    expect(result[0].activeMembers).toBe(0);
+  });
+
+  it("getPlanPerformance returns hand-computed member counts and revenue per plan", async () => {
+    const membership = await seedMembershipRecord(owner, {
+      gymId: gymA.id,
+      memberId: memberA.id,
+      planId: planA.id,
+      startDate: new Date(),
+      endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    });
+    await seedPayment(owner, {
+      gymId: gymA.id,
+      membershipId: membership.id,
+      amountMillimes: 50000,
+      recordedByUserId: adminA.id,
+    });
+
+    const tools = buildAiTools(adminContext());
+    const result = (await tools.getPlanPerformance.execute!({}, execOptions)) as {
+      planName: string;
+      memberCount: number;
+      revenueTND: number;
+    }[];
+
+    expect(result).toEqual([{ planName: "Monthly", memberCount: 1, revenueTND: 50 }]);
   });
 
   it("a tool set built for gym A never returns gym B's data, even though gym B has its own seeded data", async () => {

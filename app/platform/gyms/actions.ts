@@ -26,19 +26,19 @@ export async function createGymAction(formData: FormData): Promise<void> {
     redirect(`/platform/gyms?error=${encodeURIComponent(message)}`);
   }
 
-  redirect("/platform/gyms");
+  redirect(`/platform/gyms?success=${encodeURIComponent("Gym created.")}`);
 }
 
 export async function suspendGymAction(formData: FormData): Promise<void> {
   await requireRole("PLATFORM_ADMIN");
   const gymId = String(formData.get("gymId") ?? "");
   await setGymStatus(gymId, "SUSPENDED");
-  redirect("/platform/gyms");
+  redirect(`/platform/gyms?success=${encodeURIComponent("Gym suspended.")}`);
 }
 
 export async function reactivateGymAction(formData: FormData): Promise<void> {
   await requireRole("PLATFORM_ADMIN");
   const gymId = String(formData.get("gymId") ?? "");
   await setGymStatus(gymId, "ACTIVE");
-  redirect("/platform/gyms");
+  redirect(`/platform/gyms?success=${encodeURIComponent("Gym reactivated.")}`);
 }

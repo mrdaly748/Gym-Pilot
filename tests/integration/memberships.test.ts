@@ -99,6 +99,13 @@ describe("Phase 4 memberships service", () => {
       ).rejects.toThrow(ValidationError);
     });
 
+    it("rejects assigning a membership to an archived member", async () => {
+      await owner.query("UPDATE members SET archived_at = now() WHERE id = $1", [memberA.id]);
+      await expect(
+        assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id }),
+      ).rejects.toThrow(ValidationError);
+    });
+
     it("rejects assigning a plan/member from another gym (app-layer scoping)", async () => {
       const memberB = await seedMember(owner, {
         gymId: gymB.id,
@@ -184,6 +191,18 @@ describe("Phase 4 memberships service", () => {
       await cancelMembership(adminContext(), id);
       await expect(renewMembership(adminContext(), id)).rejects.toThrow(ValidationError);
     });
+
+    it("rejects renewing onto an archived plan when an explicit planId is supplied", async () => {
+      const { id } = await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id });
+      const archivedPlan = await seedPlan(owner, { gymId: gymA.id, name: "Old" });
+      await owner.query("UPDATE membership_plans SET archived_at = now() WHERE id = $1", [
+        archivedPlan.id,
+      ]);
+
+      await expect(
+        renewMembership(adminContext(), id, { planId: archivedPlan.id }),
+      ).rejects.toThrow(ValidationError);
+    });
   });
 
   describe("freeze / resume", () => {
@@ -210,6 +229,33 @@ describe("Phase 4 memberships service", () => {
     it("rejects resuming a membership that isn't frozen", async () => {
       const { id } = await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id });
       await expect(resumeMembership(adminContext(), id)).rejects.toThrow(ValidationError);
+    });
+
+    it("rejects freezing a cancelled membership", async () => {
+      const { id } = await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id });
+      await cancelMembership(adminContext(), id);
+      await expect(freezeMembership(adminContext(), id)).rejects.toThrow(ValidationError);
+    });
+
+    it("rejects freezing a membership from another gym (app-layer scoping)", async () => {
+      const { id } = await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id });
+      const adminB = await seedUser(owner, "admin-b-freeze@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+
+      await expect(
+        freezeMembership({ userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" }, id),
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it("rejects resuming a membership from another gym (app-layer scoping)", async () => {
+      const { id } = await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id });
+      await freezeMembership(adminContext(), id);
+      const adminB = await seedUser(owner, "admin-b-resume@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+
+      await expect(
+        resumeMembership({ userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" }, id),
+      ).rejects.toThrow(NotFoundError);
     });
 
     it("repeated freeze -> resume -> freeze -> resume does not corrupt the end date", async () => {
@@ -242,6 +288,16 @@ describe("Phase 4 memberships service", () => {
       const { id } = await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id });
       await cancelMembership(adminContext(), id);
       await expect(cancelMembership(adminContext(), id)).rejects.toThrow(NotFoundError);
+    });
+
+    it("rejects cancelling a membership from another gym (app-layer scoping)", async () => {
+      const { id } = await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id });
+      const adminB = await seedUser(owner, "admin-b-cancel@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+
+      await expect(
+        cancelMembership({ userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" }, id),
+      ).rejects.toThrow(NotFoundError);
     });
   });
 

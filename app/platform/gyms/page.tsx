@@ -12,6 +12,7 @@ import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { Badge } from "@/components/ui/Badge";
 import { Table, Thead, Th, Td, Tr, EmptyRow } from "@/components/ui/Table";
 import { GymsIcon } from "@/components/ui/icons";
+import { Flash } from "@/components/ui/Flash";
 
 /**
  * Role/authentication is already guarded by app/platform/layout.tsx
@@ -23,9 +24,9 @@ import { GymsIcon } from "@/components/ui/icons";
 export default async function PlatformGymsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; success?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, success } = await searchParams;
   const gyms = await listGyms();
 
   return (
@@ -57,6 +58,7 @@ export default async function PlatformGymsPage({
           </span>
         </div>
         <div className="mt-3">
+          {!error && <Flash success={success} />}
           <Table>
             <Thead>
               <tr>
