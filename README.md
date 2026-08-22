@@ -95,6 +95,10 @@ Supabase (Auth + database) · Vercel AI SDK + Anthropic Claude · Vitest
 
 ## Architecture, in brief
 
+For a concise, reviewer-oriented architecture walkthrough (multi-tenant
+isolation, RBAC, data-integrity guarantees, the AI assistant's tool
+design, and testing strategy), see [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
 Every route reaches the database through exactly one path: **Server
 Action → service function → Prisma**. An ESLint boundary rule enforces
 that only `lib/server/services/**` may import the Prisma client at all, so
