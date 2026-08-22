@@ -96,6 +96,15 @@ export async function POST(req: Request): Promise<Response> {
     // steps) — bounded, not open-ended, consistent with the fixed,
     // closed tool set this route exposes.
     stopWhen: stepCountIs(5),
+    // Server-side visibility only — logs just the error's own message
+    // (e.g. "401 Unauthorized", "rate limit exceeded"), never the
+    // conversation/prompt or the API key, which this callback is never
+    // given access to in the first place (see lib/ai/provider.ts).
+    // Purely a logging hook: the client-facing stream error text is
+    // unchanged, still the AI SDK's own default.
+    onError: ({ error }) => {
+      console.error("[api/ai] streamText error", error instanceof Error ? error.message : error);
+    },
   });
 
   return result.toUIMessageStreamResponse();

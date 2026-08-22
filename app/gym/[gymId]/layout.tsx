@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireGym, requireRole } from "@/lib/server/auth";
+import { AuthenticationError, AuthorizationError } from "@/lib/server/errors";
 import { GymNav } from "@/components/GymNav";
 
 /**
@@ -22,7 +23,18 @@ export default async function GymLayout({
   try {
     session = await requireGym(gymId);
     await requireRole("GYM_ADMIN", "GYM_STAFF");
-  } catch {
+  } catch (error) {
+    // AuthenticationError/AuthorizationError are the normal, expected
+    // outcome of an unauthenticated or unauthorized visit — not logged.
+    // Anything else (e.g. a database/connection failure inside
+    // getSessionContext()) is a genuine failure worth a server-side trace,
+    // since it would otherwise be indistinguishable from "not logged in".
+    if (!(error instanceof AuthenticationError) && !(error instanceof AuthorizationError)) {
+      console.error(
+        "[GymLayout] Unexpected error resolving session",
+        error instanceof Error ? error.message : error,
+      );
+    }
     redirect("/login");
   }
 
