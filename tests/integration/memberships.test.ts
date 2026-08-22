@@ -14,7 +14,7 @@ import {
   type SeededPlan,
   type SeededUser,
 } from "../helpers/testDb";
-import { prisma } from "@/lib/server/db";
+import { prisma, withTenant } from "@/lib/server/db";
 import {
   assignMembership,
   cancelMembership,
@@ -116,6 +116,141 @@ describe("Phase 4 memberships service", () => {
       await expect(
         assignMembership(adminContext(), { memberId: memberB.id, planId: planA.id }),
       ).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  // Portfolio-readiness hardening pass: memberships_no_overlapping_per_member
+  // (prisma/migrations/20260826100000_memberships_no_overlapping_per_member)
+  // — the database-level backstop for product-spec.md §13 Rule 8.
+  describe("assign — database-level overlap enforcement", () => {
+    it("rejects a backdated assignment overlapping an expired-but-not-cancelled membership, even though the app's status check alone would not catch it (boundary: exactly on the prior end date)", async () => {
+      const priorStart = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000);
+      const priorEnd = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+      await seedMembershipRecord(owner, {
+        gymId: gymA.id,
+        memberId: memberA.id,
+        planId: planA.id,
+        startDate: priorStart,
+        endDate: priorEnd,
+      });
+
+      // assignMembership()'s own hasCurrent check would NOT reject this —
+      // the prior membership is EXPIRED, which never counts as "current" —
+      // so only the database's exclusion constraint catches this overlap.
+      await expect(
+        assignMembership(adminContext(), {
+          memberId: memberA.id,
+          planId: planA.id,
+          startDate: priorEnd,
+        }),
+      ).rejects.toThrow(ValidationError);
+    });
+
+    it("allows assigning starting the day after an expired membership's end date (boundary: no overlap)", async () => {
+      const priorStart = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000);
+      const priorEnd = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+      await seedMembershipRecord(owner, {
+        gymId: gymA.id,
+        memberId: memberA.id,
+        planId: planA.id,
+        startDate: priorStart,
+        endDate: priorEnd,
+      });
+      const dayAfter = new Date(priorEnd);
+      dayAfter.setDate(dayAfter.getDate() + 1);
+
+      const { id } = await assignMembership(adminContext(), {
+        memberId: memberA.id,
+        planId: planA.id,
+        startDate: dayAfter,
+      });
+      expect(id).toBeTruthy();
+    });
+
+    it("different members can each have a current membership without conflict", async () => {
+      const memberOther = await seedMember(owner, {
+        gymId: gymA.id,
+        name: "Other Member",
+        phone: "20666777",
+        phoneNormalized: "20666777",
+      });
+      await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id });
+      const { id } = await assignMembership(adminContext(), {
+        memberId: memberOther.id,
+        planId: planA.id,
+      });
+      expect(id).toBeTruthy();
+    });
+
+    it("remains gym-scoped: two different gyms' members can have identical, overlapping-in-time memberships unaffected", async () => {
+      const adminB = await seedUser(owner, "admin-b-overlap@test.local");
+      await seedMembership(owner, { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" });
+      const memberB = await seedMember(owner, {
+        gymId: gymB.id,
+        name: "Sami",
+        phone: "20999111",
+        phoneNormalized: "20999111",
+      });
+      const planB = await seedPlan(owner, { gymId: gymB.id, name: "Monthly" });
+
+      await assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id });
+      const { id } = await assignMembership(
+        { userId: adminB.id, gymId: gymB.id, role: "GYM_ADMIN" },
+        { memberId: memberB.id, planId: planB.id },
+      );
+      expect(id).toBeTruthy();
+    });
+
+    it("the database's own exclusion constraint rejects an overlapping row even when the app-layer pre-check is bypassed", async () => {
+      const start = new Date();
+      const end = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      await withTenant(adminContext(), (tx) =>
+        tx.membership.create({
+          data: {
+            gymId: gymA.id,
+            memberId: memberA.id,
+            planId: planA.id,
+            planNameSnapshot: "Monthly",
+            priceMillimesSnapshot: 50000,
+            durationDaysSnapshot: 30,
+            startDate: start,
+            endDate: end,
+          },
+        }),
+      );
+
+      await expect(
+        withTenant(adminContext(), (tx) =>
+          tx.membership.create({
+            data: {
+              gymId: gymA.id,
+              memberId: memberA.id,
+              planId: planA.id,
+              planNameSnapshot: "Monthly",
+              priceMillimesSnapshot: 50000,
+              durationDaysSnapshot: 30,
+              startDate: start,
+              endDate: end,
+            },
+          }),
+        ),
+      ).rejects.toThrow(/exclusion constraint/i);
+    });
+
+    it("a genuine race (two concurrent assignments for a member with no current membership) still results in exactly one row, and the loser sees a ValidationError", async () => {
+      const results = await Promise.allSettled([
+        assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id }),
+        assignMembership(adminContext(), { memberId: memberA.id, planId: planA.id }),
+      ]);
+
+      const fulfilled = results.filter((r) => r.status === "fulfilled");
+      const rejected = results.filter((r) => r.status === "rejected");
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(ValidationError);
+
+      const memberships = await listMemberships(adminContext(), { memberId: memberA.id });
+      expect(memberships).toHaveLength(1);
     });
   });
 

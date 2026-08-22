@@ -175,8 +175,24 @@ export default function Home() {
         </div>
       </section>
 
-      <footer className="border-t border-border-subtle px-6 py-6 text-center text-xs text-text-tertiary md:px-10">
-        GymPilot
+      <footer className="border-t border-border-subtle px-6 py-8 md:px-10">
+        <div className="mx-auto flex max-w-5xl flex-col items-center gap-4 text-center md:flex-row md:items-center md:justify-between md:text-left">
+          <div className="flex items-center gap-2.5">
+            <LogoMark className="h-6 w-6" />
+            <div>
+              <p className="text-sm font-semibold tracking-tight text-foreground">GymPilot</p>
+              <p className="text-xs text-text-tertiary">
+                Members, payments, and attendance — all in one place.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 text-xs text-text-tertiary">
+            <Link href="/login" className="font-medium text-text-secondary hover:text-foreground">
+              Sign in
+            </Link>
+            <span>&copy; {new Date().getFullYear()} GymPilot</span>
+          </div>
+        </div>
       </footer>
     </main>
   );

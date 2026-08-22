@@ -33,6 +33,7 @@ describe("memberships and membership_freezes isolation", () => {
   let staffA: SeededUser;
   let platformAdmin: SeededUser;
   let memberA: SeededMember;
+  let memberB: SeededMember;
   let planA: SeededPlan;
   let membershipId: string;
 
@@ -61,6 +62,18 @@ describe("memberships and membership_freezes isolation", () => {
       name: "Member A",
       phone: "20123456",
       phoneNormalized: "20123456",
+    });
+    // Distinct from memberA, who already gets a current membership seeded
+    // below — the "CAN insert" test needs a member with no existing
+    // overlapping membership, since memberships_no_overlapping_per_member
+    // now enforces at most one non-cancelled membership per member for
+    // overlapping date ranges (same reasoning as memberC in
+    // tests/isolation/attendance.test.ts).
+    memberB = await seedMember(owner, {
+      gymId: gymA.id,
+      name: "Member B",
+      phone: "20654321",
+      phoneNormalized: "20654321",
     });
     planA = await seedPlan(owner, { gymId: gymA.id, name: "Monthly" });
     const membership = await seedMembershipRecord(owner, {
@@ -100,7 +113,7 @@ describe("memberships and membership_freezes isolation", () => {
           client.query(
             `INSERT INTO memberships (gym_id, member_id, plan_id, plan_name_snapshot, price_millimes_snapshot, duration_days_snapshot, start_date, end_date)
              VALUES ($1, $2, $3, 'Monthly', 50000, 30, now(), now() + interval '30 days')`,
-            [gymA.id, memberA.id, planA.id],
+            [gymA.id, memberB.id, planA.id],
           ),
       );
       expect(result.rowCount).toBe(1);

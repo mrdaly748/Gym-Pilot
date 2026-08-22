@@ -1,5 +1,6 @@
 import "server-only";
 import { withTenant, type TenantContext } from "@/lib/server/db";
+import { Prisma } from "@/lib/server/generated/prisma-client/client";
 import { NotFoundError, ValidationError } from "@/lib/server/errors";
 import { memberSearchWhereClause } from "@/lib/server/validation";
 import {
@@ -114,6 +115,49 @@ export async function listMemberships(
   return rows.map((row) => toSummary(row, now));
 }
 
+const OVERLAPPING_MEMBERSHIP_MESSAGE =
+  "This action would create an overlapping membership for this member.";
+
+/**
+ * assignMembership()'s hasCurrent check (and renewMembership()'s own
+ * no-gap/no-overlap start-date computation) are not atomic on their own —
+ * two concurrent calls for the same member could both pass before either
+ * commits. memberships_no_overlapping_per_member
+ * (prisma/migrations/20260826100000_memberships_no_overlapping_per_member)
+ * is the actual, final authority: Postgres rejects the losing INSERT, and
+ * this translates that into the same kind of ValidationError callers
+ * already get from the app-layer checks (same pattern as attendance.ts's
+ * recordCheckin() and members.ts's rethrowAsDuplicateMemberError()).
+ *
+ * Unlike a UNIQUE violation (which Prisma normalizes to the dedicated
+ * P2002 code — see members.ts), Prisma 7's driver-adapter error layer has
+ * no dedicated code for an EXCLUDE constraint: empirically (verified
+ * against this exact Prisma version by triggering the real violation, not
+ * assumed from documentation — the officially documented P2004 turned out
+ * NOT to be what this version/driver-adapter combination actually throws)
+ * it surfaces as a generic P2039 "database error" wrapping the raw
+ * driver-adapter error. So this checks the one thing that's actually
+ * stable across Prisma versions: the underlying PostgreSQL SQLSTATE code
+ * itself, `23P01` (`exclusion_violation`), a standard, documented Postgres
+ * error code — not a Prisma-specific abstraction.
+ */
+function rethrowAsOverlappingMembershipError(error: unknown): never {
+  if (isExclusionViolation(error)) {
+    throw new ValidationError(OVERLAPPING_MEMBERSHIP_MESSAGE);
+  }
+  throw error;
+}
+
+function isExclusionViolation(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+    return false;
+  }
+  const meta = error.meta as
+    | { driverAdapterError?: { cause?: { code?: string } } }
+    | undefined;
+  return meta?.driverAdapterError?.cause?.code === "23P01";
+}
+
 export type AssignMembershipInput = {
   memberId: string;
   planId: string;
@@ -171,20 +215,23 @@ export async function assignMembership(
     const startDate = input.startDate ?? now;
     const endDate = addDays(startDate, plan.durationDays);
 
-    const created = await tx.membership.create({
-      data: {
-        gymId: context.gymId,
-        memberId: input.memberId,
-        planId: plan.id,
-        planNameSnapshot: plan.name,
-        priceMillimesSnapshot: plan.priceMillimes,
-        durationDaysSnapshot: plan.durationDays,
-        startDate,
-        endDate,
-      },
-      select: { id: true },
-    });
-    return created;
+    try {
+      return await tx.membership.create({
+        data: {
+          gymId: context.gymId,
+          memberId: input.memberId,
+          planId: plan.id,
+          planNameSnapshot: plan.name,
+          priceMillimesSnapshot: plan.priceMillimes,
+          durationDaysSnapshot: plan.durationDays,
+          startDate,
+          endDate,
+        },
+        select: { id: true },
+      });
+    } catch (error) {
+      return rethrowAsOverlappingMembershipError(error);
+    }
   });
 }
 
@@ -233,20 +280,23 @@ export async function renewMembership(
     const startDate = dayAfterPrior.getTime() > now.getTime() ? dayAfterPrior : now;
     const endDate = addDays(startDate, plan.durationDays);
 
-    const created = await tx.membership.create({
-      data: {
-        gymId: context.gymId,
-        memberId: prior.memberId,
-        planId: plan.id,
-        planNameSnapshot: plan.name,
-        priceMillimesSnapshot: plan.priceMillimes,
-        durationDaysSnapshot: plan.durationDays,
-        startDate,
-        endDate,
-      },
-      select: { id: true },
-    });
-    return created;
+    try {
+      return await tx.membership.create({
+        data: {
+          gymId: context.gymId,
+          memberId: prior.memberId,
+          planId: plan.id,
+          planNameSnapshot: plan.name,
+          priceMillimesSnapshot: plan.priceMillimes,
+          durationDaysSnapshot: plan.durationDays,
+          startDate,
+          endDate,
+        },
+        select: { id: true },
+      });
+    } catch (error) {
+      return rethrowAsOverlappingMembershipError(error);
+    }
   });
 }
 

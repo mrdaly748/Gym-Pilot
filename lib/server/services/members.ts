@@ -1,5 +1,6 @@
 import "server-only";
 import { withTenant, type TenantContext } from "@/lib/server/db";
+import { Prisma } from "@/lib/server/generated/prisma-client/client";
 import { DuplicateMemberError, NotFoundError, ValidationError } from "@/lib/server/errors";
 import { isNonEmpty, memberSearchWhereClause, normalizePhone } from "@/lib/server/validation";
 
@@ -103,6 +104,32 @@ async function findDuplicateByPhone(
   );
 }
 
+/**
+ * The pre-check in createMember()/updateMember() (findDuplicateByPhone) is
+ * not atomic on its own — two concurrent calls for the same phone number
+ * could both pass it before either commits. members_gym_id_phone_normalized_key
+ * (prisma/migrations/20260826090000_members_unique_phone_per_gym) is the
+ * actual, final authority: Postgres rejects the losing INSERT/UPDATE with
+ * P2002, and this re-derives the same DuplicateMemberError the pre-check
+ * would have thrown, so callers never see a difference between "caught
+ * early" and "caught by the database" (same pattern as
+ * attendance.ts's recordCheckin()).
+ */
+async function rethrowAsDuplicateMemberError(
+  context: TenantContext,
+  phoneNormalized: string,
+  excludeMemberId: string | undefined,
+  error: unknown,
+): Promise<never> {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+    const raceDuplicate = await findDuplicateByPhone(context, phoneNormalized, excludeMemberId);
+    if (raceDuplicate) {
+      throw new DuplicateMemberError(raceDuplicate.id, raceDuplicate.name);
+    }
+  }
+  throw error;
+}
+
 function validateMemberInput(input: MemberInput): { name: string; phoneNormalized: string } {
   const name = input.name.trim();
   if (!isNonEmpty(name)) {
@@ -126,20 +153,24 @@ export async function createMember(
     throw new DuplicateMemberError(duplicate.id, duplicate.name);
   }
 
-  return withTenant(context, (tx) =>
-    tx.member.create({
-      data: {
-        gymId: context.gymId,
-        name,
-        phone: input.phone.trim(),
-        phoneNormalized,
-        joinDate: input.joinDate,
-        emergencyContactName: input.emergencyContactName?.trim() || null,
-        emergencyContactPhone: input.emergencyContactPhone?.trim() || null,
-      },
-      select: { id: true },
-    }),
-  );
+  try {
+    return await withTenant(context, (tx) =>
+      tx.member.create({
+        data: {
+          gymId: context.gymId,
+          name,
+          phone: input.phone.trim(),
+          phoneNormalized,
+          joinDate: input.joinDate,
+          emergencyContactName: input.emergencyContactName?.trim() || null,
+          emergencyContactPhone: input.emergencyContactPhone?.trim() || null,
+        },
+        select: { id: true },
+      }),
+    );
+  } catch (error) {
+    return rethrowAsDuplicateMemberError(context, phoneNormalized, undefined, error);
+  }
 }
 
 export async function updateMember(
@@ -154,19 +185,24 @@ export async function updateMember(
     throw new DuplicateMemberError(duplicate.id, duplicate.name);
   }
 
-  const result = await withTenant(context, (tx) =>
-    tx.member.updateMany({
-      where: { id: memberId, gymId: context.gymId },
-      data: {
-        name,
-        phone: input.phone.trim(),
-        phoneNormalized,
-        joinDate: input.joinDate,
-        emergencyContactName: input.emergencyContactName?.trim() || null,
-        emergencyContactPhone: input.emergencyContactPhone?.trim() || null,
-      },
-    }),
-  );
+  let result: { count: number };
+  try {
+    result = await withTenant(context, (tx) =>
+      tx.member.updateMany({
+        where: { id: memberId, gymId: context.gymId },
+        data: {
+          name,
+          phone: input.phone.trim(),
+          phoneNormalized,
+          joinDate: input.joinDate,
+          emergencyContactName: input.emergencyContactName?.trim() || null,
+          emergencyContactPhone: input.emergencyContactPhone?.trim() || null,
+        },
+      }),
+    );
+  } catch (error) {
+    return rethrowAsDuplicateMemberError(context, phoneNormalized, memberId, error);
+  }
   if (result.count === 0) {
     throw new NotFoundError("Member not found in this gym.");
   }

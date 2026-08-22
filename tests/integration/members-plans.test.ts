@@ -10,7 +10,7 @@ import {
   type SeededGym,
   type SeededUser,
 } from "../helpers/testDb";
-import { prisma } from "@/lib/server/db";
+import { prisma, withTenant } from "@/lib/server/db";
 import {
   archiveMember,
   createMember,
@@ -108,6 +108,62 @@ describe("Phase 3 services (members + plans)", () => {
       }
       expect(caught).toBeInstanceOf(DuplicateMemberError);
       expect((caught as DuplicateMemberError).existingMemberId).toBe(archived.id);
+    });
+
+    it("allows the same phone number to be used in two different gyms (tenant isolation)", async () => {
+      const gymBAdmin = await seedUser(owner, "admin-b-same-phone@test.local");
+      await seedMembership(owner, { userId: gymBAdmin.id, gymId: gymB.id, role: "GYM_ADMIN" });
+
+      await createMember(adminContext(), { name: "Ali", phone: "20123456", joinDate: new Date() });
+      const { id } = await createMember(
+        { userId: gymBAdmin.id, gymId: gymB.id, role: "GYM_ADMIN" },
+        { name: "Different Ali", phone: "20123456", joinDate: new Date() },
+      );
+      expect(id).toBeTruthy();
+    });
+
+    it("the database's own unique index rejects a duplicate row even when the app-layer pre-check is bypassed", async () => {
+      await withTenant(adminContext(), (tx) =>
+        tx.member.create({
+          data: {
+            gymId: gymA.id,
+            name: "Ali",
+            phone: "20123456",
+            phoneNormalized: "20123456",
+            joinDate: new Date(),
+          },
+        }),
+      );
+
+      await expect(
+        withTenant(adminContext(), (tx) =>
+          tx.member.create({
+            data: {
+              gymId: gymA.id,
+              name: "Ali Duplicate",
+              phone: "20123456",
+              phoneNormalized: "20123456",
+              joinDate: new Date(),
+            },
+          }),
+        ),
+      ).rejects.toThrow(/unique constraint/i);
+    });
+
+    it("a genuine race (two concurrent creates with the same phone) still results in exactly one row, and the loser sees a DuplicateMemberError", async () => {
+      const results = await Promise.allSettled([
+        createMember(adminContext(), { name: "Ali", phone: "20123456", joinDate: new Date() }),
+        createMember(adminContext(), { name: "Ali Again", phone: "20123456", joinDate: new Date() }),
+      ]);
+
+      const fulfilled = results.filter((r) => r.status === "fulfilled");
+      const rejected = results.filter((r) => r.status === "rejected");
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(DuplicateMemberError);
+
+      const members = await listMembers(adminContext());
+      expect(members).toHaveLength(1);
     });
 
     it("updateMember excludes the member's own row from the duplicate check", async () => {

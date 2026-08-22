@@ -131,8 +131,16 @@ model Member {
   attendanceCheckins AttendanceCheckin[]
   trainerLinks       TrainerMemberLink[]
 
+  // Portfolio-readiness hardening pass: a member's normalized phone number
+  // must be unique within a gym — matches the duplicate check
+  // lib/server/services/members.ts already performs (findDuplicateByPhone,
+  // including archived members), now backed by a real database constraint
+  // so a race between two concurrent createMember() calls can't slip a
+  // duplicate past the pre-check. See
+  // prisma/migrations/*_members_unique_phone_per_gym for the migration that
+  // replaces the old plain index with this unique one.
   @@index([gymId])
-  @@index([gymId, phoneNormalized])
+  @@unique([gymId, phoneNormalized])
   @@map("members")
 }
 
@@ -170,6 +178,17 @@ model MembershipPlan {
 // already-sold membership's terms (product-spec.md §18) — `planId` is kept
 // only for traceability back to the plan actually sold, never re-read for
 // the membership's own terms.
+//
+// Portfolio-readiness hardening pass (product-spec.md §13 Rule 8): a member
+// may not have two overlapping non-cancelled memberships. Enforced by a
+// hand-authored PostgreSQL EXCLUDE constraint (GiST, requires btree_gist) on
+// (member_id, daterange(start_date, end_date, '[]')) WHERE cancelled_at IS
+// NULL — not expressible in Prisma's schema DSL (same reason RLS policies
+// and the attendance one-check-in-per-day index live in raw migration SQL,
+// not here). See
+// prisma/migrations/*_memberships_no_overlapping_per_member for the
+// constraint and the reasoning for why it's date-range-based rather than
+// status-based.
 model Membership {
   id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   gymId                 String    @map("gym_id") @db.Uuid
